@@ -18,10 +18,10 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.gms.location.LocationServices
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.tabs.TabLayout
 import space.declared.weather.R
 import space.declared.weather.data.CityResult
 import space.declared.weather.data.DailyForecast
@@ -31,7 +31,6 @@ import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
 
-    // Get a reference to the ViewModel using the AndroidX ktx library
     private val viewModel: WeatherViewModel by viewModels()
 
     // UI Elements
@@ -40,6 +39,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var citySearch: EditText
     private lateinit var searchButton: Button
     private lateinit var locationButton: Button
+    private lateinit var forecastTabs: TabLayout
     private lateinit var cityName: TextView
     private lateinit var temperature: TextView
     private lateinit var weatherDescription: TextView
@@ -53,8 +53,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cloudCover: TextView
     private lateinit var wind: TextView
     private lateinit var windGusts: TextView
-    private lateinit var forecastRecyclerView: RecyclerView
-    private lateinit var forecastAdapter: ForecastAdapter
 
     private val fusedLocationClient by lazy { LocationServices.getFusedLocationProviderClient(this) }
 
@@ -76,13 +74,11 @@ class MainActivity : AppCompatActivity() {
         setSupportActionBar(toolbar)
 
         initializeViews()
-        setupRecyclerView()
-        setupObservers() // Set up listeners for LiveData from the ViewModel
+        setupObservers()
 
         searchButton.setOnClickListener {
             val city = citySearch.text.toString().trim()
             if (city.isNotEmpty()) {
-                // Tell the ViewModel to start the search
                 viewModel.onCitySearch(city)
             } else {
                 Toast.makeText(this, "Please enter a city name", Toast.LENGTH_SHORT).show()
@@ -98,6 +94,7 @@ class MainActivity : AppCompatActivity() {
         citySearch = findViewById(R.id.citySearch)
         searchButton = findViewById(R.id.searchButton)
         locationButton = findViewById(R.id.locationButton)
+        forecastTabs = findViewById(R.id.forecastTabs)
         cityName = findViewById(R.id.cityName)
         temperature = findViewById(R.id.temperature)
         weatherDescription = findViewById(R.id.weatherDescription)
@@ -111,40 +108,34 @@ class MainActivity : AppCompatActivity() {
         cloudCover = findViewById(R.id.cloudCover)
         wind = findViewById(R.id.wind)
         windGusts = findViewById(R.id.windGusts)
-        forecastRecyclerView = findViewById(R.id.forecastRecyclerView)
     }
 
-    private fun setupRecyclerView() {
-        forecastAdapter = ForecastAdapter(emptyList())
-        forecastRecyclerView.layoutManager = LinearLayoutManager(this)
-        forecastRecyclerView.adapter = forecastAdapter
-    }
-
-    /**
-     * This is the core of the new architecture. We observe the LiveData objects
-     * in the ViewModel and update the UI whenever the data changes.
-     */
     private fun setupObservers() {
-        // Observer for the main weather data
-        viewModel.weatherData.observe(this) { data ->
+        // Observer for the overall weather state (city name and forecast for tabs)
+        viewModel.weatherScreenState.observe(this) { state ->
             weatherDataContainer.visibility = View.VISIBLE
-            cityName.text = data.cityName
-            temperature.text = "${data.currentTemp}°C"
-            weatherDescription.text = data.weatherDescription
-            uvIndex.text = data.uvIndex
-            sunrise.text = data.sunrise
-            sunset.text = data.sunset
-            daylight.text = data.daylight
-            pressure.text = data.pressure
-            humidity.text = data.humidity
-            precipitation.text = data.precipitationChance
-            cloudCover.text = data.cloudCover
-            wind.text = data.wind
-            windGusts.text = data.windGusts
-            forecastAdapter.updateData(data.forecast)
+            cityName.text = state.cityName
+            setupForecastTabs(state.fullForecast)
         }
 
-        // Observer for the city list to show the selection dialog
+        // Observer for the detailed weather of the selected day
+        viewModel.selectedDayWeather.observe(this) { details ->
+            temperature.text = "${details.tempMax}° / ${details.tempMin}°C"
+            weatherDescription.text = details.weatherDescription
+            uvIndex.text = details.uvIndex
+            sunrise.text = details.sunrise
+            sunset.text = details.sunset
+            daylight.text = details.daylight
+
+            // These details are only available for the current day
+            pressure.text = details.pressure ?: "Pressure: N/A"
+            humidity.text = details.humidity ?: "Humidity: N/A"
+            precipitation.text = details.precipitationChance ?: "Precipitation Chance: N/A"
+            cloudCover.text = details.cloudCover ?: "Cloud Cover: N/A"
+            wind.text = details.wind ?: "Wind: N/A"
+            windGusts.text = details.windGusts ?: "Gusts: N/A"
+        }
+
         viewModel.cityList.observe(this) { cities ->
             when {
                 cities.size > 1 -> showCitySelectionDialog(cities)
@@ -155,7 +146,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Observer for the loading state (progress bar)
         viewModel.isLoading.observe(this) { isLoading ->
             progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
             if (isLoading) {
@@ -163,7 +153,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Observer for error messages
         viewModel.error.observe(this) { error ->
             if (error.isNotEmpty()) {
                 Toast.makeText(this, error, Toast.LENGTH_LONG).show()
@@ -171,11 +160,25 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupForecastTabs(forecast: List<DailyForecast>) {
+        forecastTabs.removeAllTabs()
+        forecast.forEachIndexed { index, day ->
+            val tab = forecastTabs.newTab().setText(formatDayForTab(day.date, index))
+            forecastTabs.addTab(tab)
+        }
+        forecastTabs.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab?) {
+                tab?.let { viewModel.onDaySelected(it.position) }
+            }
+            override fun onTabUnselected(tab: TabLayout.Tab?) {}
+            override fun onTabReselected(tab: TabLayout.Tab?) {}
+        })
+    }
+
     private fun getCurrentLocationWeather() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             fusedLocationClient.lastLocation.addOnSuccessListener { location ->
                 if (location != null) {
-                    // Tell the ViewModel to fetch weather for the current location
                     viewModel.fetchWeatherForLocation(location.latitude, location.longitude, "Current Location")
                 } else {
                     Toast.makeText(this, "Could not retrieve location. Is GPS on?", Toast.LENGTH_LONG).show()
@@ -198,62 +201,20 @@ class MainActivity : AppCompatActivity() {
                 val selectedCity = cities[which]
                 val displayName = if (selectedCity.state != null && selectedCity.state.isNotEmpty()) "${selectedCity.name}, ${selectedCity.state}"
                 else selectedCity.name
-                // Tell the ViewModel to fetch weather for the selected city
                 viewModel.fetchWeatherForLocation(selectedCity.latitude, selectedCity.longitude, displayName)
                 dialog.dismiss()
             }
             .setNegativeButton("Cancel") { dialog, _ -> dialog.dismiss() }
             .show()
     }
-}
 
-// --- RecyclerView Adapter for the Forecast ---
-class ForecastAdapter(private var forecastList: List<DailyForecast>) :
-    RecyclerView.Adapter<ForecastAdapter.ForecastViewHolder>() {
-
-    class ForecastViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-        val dayTextView: TextView = view.findViewById(R.id.dayTextView)
-        val weatherIconImageView: ImageView = view.findViewById(R.id.weatherIconImageView)
-        val tempTextView: TextView = view.findViewById(R.id.tempTextView)
-    }
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ForecastViewHolder {
-        val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.forecast_list_item, parent, false)
-        return ForecastViewHolder(view)
-    }
-
-    override fun onBindViewHolder(holder: ForecastViewHolder, position: Int) {
-        val forecast = forecastList[position]
-        holder.dayTextView.text = formatDay(forecast.date)
-        holder.tempTextView.text = "${forecast.tempMax.roundToInt()}° / ${forecast.tempMin.roundToInt()}°"
-        holder.weatherIconImageView.setImageResource(getIconForWeatherCode(forecast.weatherCode))
-    }
-
-    override fun getItemCount() = forecastList.size
-
-    fun updateData(newForecastList: List<DailyForecast>) {
-        forecastList = newForecastList
-        notifyDataSetChanged()
-    }
-
-    private fun formatDay(dateString: String): String {
+    private fun formatDayForTab(dateString: String, index: Int): String {
+        if (index == 0) return "Today"
         return try {
             val inputFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             val outputFormat = SimpleDateFormat("EEE", Locale.getDefault())
             val date = inputFormat.parse(dateString)
             outputFormat.format(date!!)
         } catch (e: Exception) { "N/A" }
-    }
-
-    private fun getIconForWeatherCode(code: Int): Int {
-        return when (code) {
-            0 -> R.drawable.ic_clear_day
-            1, 2, 3 -> R.drawable.ic_cloudy
-            45, 48 -> R.drawable.ic_fog
-            51, 53, 55, 61, 63, 65, 80, 81, 82 -> R.drawable.ic_rain
-            95 -> R.drawable.ic_thunderstorm
-            else -> R.drawable.ic_cloudy
-        }
     }
 }

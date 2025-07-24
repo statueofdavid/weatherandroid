@@ -15,47 +15,62 @@ import java.util.Locale
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
-// New data class to hold all parsed weather information together
-data class WeatherData(
-    val cityName: String,
-    val currentTemp: Int,
+/**
+ * A new data class to hold the detailed weather info for a single selected day.
+ * This is what will be displayed in the main weather cards.
+ */
+data class DetailedDayWeather(
+    val date: String,
+    val tempMax: Int,
+    val tempMin: Int,
     val weatherDescription: String,
     val uvIndex: String,
     val sunrise: String,
     val sunset: String,
     val daylight: String,
-    val pressure: String,
-    val humidity: String,
-    val precipitationChance: String,
-    val cloudCover: String,
-    val wind: String,
-    val windGusts: String,
-    val forecast: List<DailyForecast>
+    // The following fields are from the hourly data for the current day
+    val pressure: String?,
+    val humidity: String?,
+    val precipitationChance: String?,
+    val cloudCover: String?,
+    val wind: String?,
+    val windGusts: String?
+)
+
+/**
+ * This data class represents the entire state of the weather screen.
+ * It's emitted once per successful API call.
+ */
+data class WeatherScreenState(
+    val cityName: String,
+    val fullForecast: List<DailyForecast>
 )
 
 class WeatherViewModel(application: Application) : AndroidViewModel(application) {
 
-    // The repository is our single source of truth for data
     private val repository: WeatherRepository
 
-    // LiveData to hold the list of cities for the selection dialog
+    // LiveData for the list of cities from a search
     private val _cityList = MutableLiveData<List<CityResult>>()
     val cityList: LiveData<List<CityResult>> = _cityList
 
-    // LiveData to hold all the weather data for the UI to display
-    private val _weatherData = MutableLiveData<WeatherData>()
-    val weatherData: LiveData<WeatherData> = _weatherData
+    // LiveData for the overall screen state (city name and 10-day forecast)
+    private val _weatherScreenState = MutableLiveData<WeatherScreenState>()
+    val weatherScreenState: LiveData<WeatherScreenState> = _weatherScreenState
 
-    // LiveData to manage the visibility of the progress bar
+    // LiveData for the detailed weather of the currently selected day
+    private val _selectedDayWeather = MutableLiveData<DetailedDayWeather>()
+    val selectedDayWeather: LiveData<DetailedDayWeather> = _selectedDayWeather
+
+    // LiveData for loading and error states
     private val _isLoading = MutableLiveData<Boolean>()
     val isLoading: LiveData<Boolean> = _isLoading
-
-    // LiveData to show error messages to the user
     private val _error = MutableLiveData<String>()
     val error: LiveData<String> = _error
 
+    private var lastFullResponse: JSONObject? = null
+
     init {
-        // Initialize the repository. This is a simple form of dependency injection.
         val remoteDataSource = OpenMeteoRemoteDataSource(application)
         repository = WeatherRepository(remoteDataSource)
     }
@@ -72,7 +87,6 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
                     _isLoading.value = false
                 } else {
                     _cityList.value = result
-                    // Don't hide loading indicator yet, wait for user to select a city
                 }
             }
 
@@ -84,15 +98,17 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Called by the UI when a city is selected or location is fetched directly.
+     * Called by the UI to fetch weather for a specific location.
      */
     fun fetchWeatherForLocation(latitude: Double, longitude: Double, name: String) {
         _isLoading.value = true
         repository.getWeatherData(latitude, longitude, object : OpenMeteoRemoteDataSource.ApiCallback<JSONObject> {
             override fun onSuccess(result: JSONObject) {
-                // Parse the complex JSON object into our clean WeatherData class
-                val parsedData = parseWeatherData(result, name)
-                _weatherData.value = parsedData
+                lastFullResponse = result // Cache the full response
+                val forecast = parseFullForecast(result.getJSONObject("daily"))
+                _weatherScreenState.value = WeatherScreenState(name, forecast)
+                // After fetching, automatically select the first day (today)
+                onDaySelected(0)
                 _isLoading.value = false
             }
 
@@ -104,34 +120,79 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * A private helper function to parse the large JSON response from the API.
-     * This keeps the parsing logic separate and clean.
+     * Called by the UI when the user taps on a forecast tab.
      */
-    private fun parseWeatherData(response: JSONObject, name: String): WeatherData {
-        // Current Weather
-        val current = response.getJSONObject("current")
-        val temp = current.getDouble("temperature_2m")
-        val weatherCode = current.getInt("weather_code")
-        val press = current.getDouble("pressure_msl")
-        val windSpeed = current.getDouble("wind_speed_10m")
-        val windDir = current.getDouble("wind_direction_10m")
-        val windGust = current.getDouble("wind_gusts_10m")
+    fun onDaySelected(index: Int) {
+        val fullForecast = _weatherScreenState.value?.fullForecast ?: return
+        if (index >= fullForecast.size) return
 
-        // Hourly Weather
-        val hourly = response.getJSONObject("hourly")
-        val currentHourIndex = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-        val hum = hourly.getJSONArray("relative_humidity_2m").getInt(currentHourIndex)
-        val precipChance = hourly.getJSONArray("precipitation_probability").getInt(currentHourIndex)
-        val cloud = hourly.getJSONArray("cloud_cover").getInt(currentHourIndex)
+        val selectedDay = fullForecast[index]
+        val detailedWeather = createDetailedWeatherForDay(selectedDay, index)
+        _selectedDayWeather.value = detailedWeather
+    }
 
-        // Daily Weather
-        val daily = response.getJSONObject("daily")
-        val uv = daily.getJSONArray("uv_index_max").getDouble(0)
-        val sunriseStr = daily.getJSONArray("sunrise").getString(0)
-        val sunsetStr = daily.getJSONArray("sunset").getString(0)
-        val daylightSeconds = daily.getJSONArray("daylight_duration").getDouble(0)
+    /**
+     * Creates the detailed weather object for the selected day.
+     * For today (index 0), it uses current hourly data. For future days, some fields will be null.
+     */
+    private fun createDetailedWeatherForDay(day: DailyForecast, index: Int): DetailedDayWeather {
+        val daily = lastFullResponse?.getJSONObject("daily")
+        val uv = daily?.getJSONArray("uv_index_max")?.getDouble(index) ?: 0.0
+        val sunriseStr = daily?.getJSONArray("sunrise")?.getString(index) ?: ""
+        val sunsetStr = daily?.getJSONArray("sunset")?.getString(index) ?: ""
+        val daylightSeconds = daily?.getJSONArray("daylight_duration")?.getDouble(index) ?: 0.0
 
-        // 10-Day Forecast
+        var pressureVal: String? = null
+        var humidityVal: String? = null
+        var precipChanceVal: String? = null
+        var cloudCoverVal: String? = null
+        var windVal: String? = null
+        var windGustsVal: String? = null
+
+        // Only today's forecast (index 0) will have current/hourly details
+        if (index == 0 && lastFullResponse != null) {
+            val current = lastFullResponse!!.getJSONObject("current")
+            val hourly = lastFullResponse!!.getJSONObject("hourly")
+            val currentHourIndex = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+
+            val press = current.getDouble("pressure_msl")
+            val hum = hourly.getJSONArray("relative_humidity_2m").getInt(currentHourIndex)
+            val precipChance = hourly.getJSONArray("precipitation_probability").getInt(currentHourIndex)
+            val cloud = hourly.getJSONArray("cloud_cover").getInt(currentHourIndex)
+            val windSpeed = current.getDouble("wind_speed_10m")
+            val windDir = current.getDouble("wind_direction_10m")
+            val windGust = current.getDouble("wind_gusts_10m")
+
+            pressureVal = "Pressure: ${press.roundToInt()} hPa"
+            humidityVal = "Humidity: $hum%"
+            precipChanceVal = "Precipitation Chance: $precipChance%"
+            cloudCoverVal = "Cloud Cover: $cloud%"
+            windVal = "Wind: ${getWindDirection(windDir)} at ${windSpeed.roundToInt()} km/h"
+            windGustsVal = "Gusts: ${windGust.roundToInt()} km/h"
+        }
+
+        return DetailedDayWeather(
+            date = day.date,
+            tempMax = day.tempMax.roundToInt(),
+            tempMin = day.tempMin.roundToInt(),
+            weatherDescription = getWeatherDescriptionFromCode(day.weatherCode),
+            uvIndex = "UV Index: ${uv.roundToInt()} (${getUvIndexRisk(uv)})",
+            sunrise = "Sunrise: ${formatTime(sunriseStr)}",
+            sunset = "Sunset: ${formatTime(sunsetStr)}",
+            daylight = "Daylight: ${String.format("%.1f", daylightSeconds / 3600)} hours",
+            pressure = pressureVal,
+            humidity = humidityVal,
+            precipitationChance = precipChanceVal,
+            cloudCover = cloudCoverVal,
+            wind = windVal,
+            windGusts = windGustsVal
+        )
+    }
+
+    /**
+     * Parses just the 10-day forecast list from the "daily" JSON object.
+     */
+    private fun parseFullForecast(daily: JSONObject): List<DailyForecast> {
         val forecastList = mutableListOf<DailyForecast>()
         val timeArray = daily.getJSONArray("time")
         val weatherCodeArray = daily.getJSONArray("weather_code")
@@ -148,24 +209,7 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
                 )
             )
         }
-
-        // Return a single, clean data object
-        return WeatherData(
-            cityName = name,
-            currentTemp = temp.roundToInt(),
-            weatherDescription = getWeatherDescriptionFromCode(weatherCode),
-            uvIndex = "UV Index: ${uv.roundToInt()} (${getUvIndexRisk(uv)})",
-            sunrise = "Sunrise: ${formatTime(sunriseStr)}",
-            sunset = "Sunset: ${formatTime(sunsetStr)}",
-            daylight = "Daylight: ${String.format("%.1f", daylightSeconds / 3600)} hours",
-            pressure = "Pressure: ${press.roundToInt()} hPa",
-            humidity = "Humidity: $hum%",
-            precipitationChance = "Precipitation Chance: $precipChance%",
-            cloudCover = "Cloud Cover: $cloud%",
-            wind = "Wind: ${getWindDirection(windDir)} at ${windSpeed.roundToInt()} km/h",
-            windGusts = "Gusts: ${windGust.roundToInt()} km/h",
-            forecast = forecastList
-        )
+        return forecastList
     }
 
     // --- HELPER FUNCTIONS ---
