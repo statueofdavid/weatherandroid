@@ -15,15 +15,14 @@
 
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
-            android:paddingTop="24dp"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
+            android:paddingTop="24dp"
             app:title="@string/app_name"
             app:titleCentered="true" />
 
     </com.google.android.material.appbar.AppBarLayout>
 
-    <!-- Added android:fillViewport="true" to resolve scrolling issues -->
     <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -95,6 +94,23 @@
                 android:orientation="vertical"
                 android:visibility="gone"
                 tools:visibility="visible">
+
+                <!-- New Card for Daily Forecast Tabs -->
+                <androidx.cardview.widget.CardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_margin="8dp"
+                    app:cardCornerRadius="8dp"
+                    app:cardElevation="4dp">
+
+                    <com.google.android.material.tabs.TabLayout
+                        android:id="@+id/forecastTabs"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        app:tabMode="scrollable" />
+
+                </androidx.cardview.widget.CardView>
+
 
                 <!-- Main Weather Card -->
                 <androidx.cardview.widget.CardView
@@ -250,39 +266,6 @@
                             android:layout_height="wrap_content"
                             android:textSize="16sp"
                             tools:text="Gusts: 30 km/h" />
-                    </LinearLayout>
-                </androidx.cardview.widget.CardView>
-
-                <!-- 10-Day Forecast Card -->
-                <androidx.cardview.widget.CardView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_margin="8dp"
-                    app:cardCornerRadius="8dp"
-                    app:cardElevation="4dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:padding="16dp">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="10-Day Forecast"
-                            android:textSize="18sp"
-                            android:textStyle="bold"
-                            android:layout_marginBottom="8dp"/>
-
-                        <androidx.recyclerview.widget.RecyclerView
-                            android:id="@+id/forecastRecyclerView"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:nestedScrollingEnabled="false"
-                            tools:listitem="@layout/forecast_list_item"
-                            tools:itemCount="10"/>
-
                     </LinearLayout>
                 </androidx.cardview.widget.CardView>
 
