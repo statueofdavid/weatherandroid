@@ -7,8 +7,11 @@ import androidx.lifecycle.MutableLiveData
 import org.json.JSONObject
 import space.declared.weather.data.CityResult
 import space.declared.weather.data.DailyForecast
+import space.declared.weather.data.WaterData
 import space.declared.weather.data.WeatherRepository
+import space.declared.weather.data.source.NoaaRemoteDataSource
 import space.declared.weather.data.source.OpenMeteoRemoteDataSource
+import space.declared.weather.data.source.UsgsRemoteDataSource
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -41,12 +44,12 @@ data class DetailedDayWeather(
  * This data class represents the entire state of the weather screen.
  * It's emitted once per successful API call.
  */
-data class WeatherScreenState(
+data class MainScreenState(
     val cityName: String,
     val fullForecast: List<DailyForecast>
 )
 
-class WeatherViewModel(application: Application) : AndroidViewModel(application) {
+class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: WeatherRepository
 
@@ -55,12 +58,16 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     val cityList: LiveData<List<CityResult>> = _cityList
 
     // LiveData for the overall screen state (city name and 10-day forecast)
-    private val _weatherScreenState = MutableLiveData<WeatherScreenState>()
-    val weatherScreenState: LiveData<WeatherScreenState> = _weatherScreenState
+    private val _mainScreenState = MutableLiveData<MainScreenState>()
+    val mainScreenState: LiveData<MainScreenState> = _mainScreenState
 
     // LiveData for the detailed weather of the currently selected day
     private val _selectedDayWeather = MutableLiveData<DetailedDayWeather>()
     val selectedDayWeather: LiveData<DetailedDayWeather> = _selectedDayWeather
+
+    // LiveData for the water data (tides or rivers)
+    private val _waterData = MutableLiveData<WaterData?>()
+    val waterData: LiveData<WaterData?> = _waterData
 
     // LiveData for loading and error states
     private val _isLoading = MutableLiveData<Boolean>()
@@ -71,8 +78,11 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     private var lastFullResponse: JSONObject? = null
 
     init {
-        val remoteDataSource = OpenMeteoRemoteDataSource(application)
-        repository = WeatherRepository(remoteDataSource)
+        // Initialize all data sources and the repository
+        val openMeteoDataSource = OpenMeteoRemoteDataSource(application)
+        val noaaDataSource = NoaaRemoteDataSource(application)
+        val usgsDataSource = UsgsRemoteDataSource(application)
+        repository = WeatherRepository(openMeteoDataSource, noaaDataSource, usgsDataSource)
     }
 
     /**
@@ -98,15 +108,20 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Called by the UI to fetch weather for a specific location.
+     * Called by the UI to fetch weather and water data for a specific location.
      */
-    fun fetchWeatherForLocation(latitude: Double, longitude: Double, name: String) {
+    fun fetchWeatherAndWaterData(latitude: Double, longitude: Double, name: String) {
         _isLoading.value = true
-        repository.getWeatherData(latitude, longitude, object : OpenMeteoRemoteDataSource.ApiCallback<JSONObject> {
-            override fun onSuccess(result: JSONObject) {
-                lastFullResponse = result // Cache the full response
-                val forecast = parseFullForecast(result.getJSONObject("daily"))
-                _weatherScreenState.value = WeatherScreenState(name, forecast)
+        repository.getWeatherDataAndWaterLevels(latitude, longitude, object : OpenMeteoRemoteDataSource.ApiCallback<Pair<JSONObject, WaterData?>> {
+            override fun onSuccess(result: Pair<JSONObject, WaterData?>) {
+                val weatherJson = result.first
+                val waterDataResult = result.second
+
+                lastFullResponse = weatherJson // Cache the full response
+                val forecast = parseFullForecast(weatherJson.getJSONObject("daily"))
+                _mainScreenState.value = MainScreenState(name, forecast)
+                _waterData.value = waterDataResult // Update the water data LiveData
+
                 // After fetching, automatically select the first day (today)
                 onDaySelected(0)
                 _isLoading.value = false
@@ -123,12 +138,19 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
      * Called by the UI when the user taps on a forecast tab.
      */
     fun onDaySelected(index: Int) {
-        val fullForecast = _weatherScreenState.value?.fullForecast ?: return
+        val fullForecast = _mainScreenState.value?.fullForecast ?: return
         if (index >= fullForecast.size) return
 
         val selectedDay = fullForecast[index]
         val detailedWeather = createDetailedWeatherForDay(selectedDay, index)
         _selectedDayWeather.value = detailedWeather
+    }
+
+    /**
+     * Called by the UI after the city selection dialog has been shown, to prevent it from re-appearing.
+     */
+    fun onCitySelectionDialogShown() {
+        _cityList.value = emptyList()
     }
 
     /**
