@@ -14,7 +14,6 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -28,7 +27,6 @@ import java.util.Locale
 
 class WeatherFragment : Fragment() {
 
-    // Use activityViewModels to share the ViewModel with the MainActivity
     private val viewModel: MainViewModel by activityViewModels()
 
     // UI Elements
@@ -51,9 +49,6 @@ class WeatherFragment : Fragment() {
     private lateinit var cloudCover: TextView
     private lateinit var wind: TextView
     private lateinit var windGusts: TextView
-    private lateinit var waterDataCard: CardView
-    private lateinit var waterDataTitle: TextView
-    private lateinit var waterDataContent: LinearLayout
 
     private val fusedLocationClient by lazy { LocationServices.getFusedLocationProviderClient(requireActivity()) }
 
@@ -71,7 +66,6 @@ class WeatherFragment : Fragment() {
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        // Inflate the layout for this fragment
         return inflater.inflate(R.layout.fragment_weather, container, false)
     }
 
@@ -113,8 +107,6 @@ class WeatherFragment : Fragment() {
         cloudCover = view.findViewById(R.id.cloudCover)
         wind = view.findViewById(R.id.wind)
         windGusts = view.findViewById(R.id.windGusts)
-        waterDataTitle = view.findViewById(R.id.waterDataTitle)
-        waterDataContent = view.findViewById(R.id.waterDataContent)
     }
 
     private fun setupObservers() {
@@ -140,33 +132,8 @@ class WeatherFragment : Fragment() {
             windGusts.text = details.windGusts ?: "Gusts: N/A"
         }
 
-        viewModel.waterData.observe(viewLifecycleOwner) { data ->
-            if (data == null) {
-                waterDataCard.visibility = View.GONE
-            } else {
-                waterDataCard.visibility = View.VISIBLE
-                waterDataContent.removeAllViews()
-
-                if (data.isTideData && data.tidePredictions != null) {
-                    waterDataTitle.text = "Tide Predictions"
-                    data.tidePredictions.forEach { tide ->
-                        val tideTextView = TextView(requireContext())
-                        val tideType = if (tide.type == "H") "High" else "Low"
-                        tideTextView.text = "$tideType Tide: ${formatTideTime(tide.time)} (${tide.height} ft)"
-                        tideTextView.textSize = 16f
-                        waterDataContent.addView(tideTextView)
-                    }
-                } else if (!data.isTideData && data.waterLevel != null) {
-                    waterDataTitle.text = data.waterLevel.siteName
-                    val levelTextView = TextView(requireContext())
-                    levelTextView.text = "${data.waterLevel.variableName}: ${data.waterLevel.value} ${data.waterLevel.unit}"
-                    levelTextView.textSize = 16f
-                    waterDataContent.addView(levelTextView)
-                }
-            }
-        }
-
         viewModel.cityList.observe(viewLifecycleOwner) { cities ->
+            // Only show the dialog if the list is not empty
             if (cities.isNotEmpty()) {
                 when {
                     cities.size > 1 -> showCitySelectionDialog(cities)
@@ -175,6 +142,8 @@ class WeatherFragment : Fragment() {
                         viewModel.fetchWeatherAndWaterData(city.latitude, city.longitude, city.name)
                     }
                 }
+                // Tell the ViewModel that we've handled this event
+                viewModel.onCitySelectionDialogShown()
             }
         }
 
