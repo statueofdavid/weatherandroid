@@ -4,16 +4,7 @@ import android.content.Context
 import com.android.volley.Request
 import com.android.volley.toolbox.JsonObjectRequest
 import com.android.volley.toolbox.Volley
-
-/**
- * Represents the water level data from a USGS monitoring site.
- */
-data class WaterLevelData(
-    val siteName: String,
-    val variableName: String, // e.g., "Gage height"
-    val value: String,
-    val unit: String
-)
+import space.declared.weather.data.WaterLevelData
 
 /**
  * Handles network operations to fetch water level data from the USGS API.
@@ -23,15 +14,15 @@ class UsgsRemoteDataSource(context: Context) {
     private val requestQueue = Volley.newRequestQueue(context.applicationContext)
 
     /**
-     * Fetches the latest water level reading for the nearest monitoring site.
+     * Fetches the latest water level reading for all monitoring sites within a given radius.
      */
-    fun fetchWaterLevel(latitude: Double, longitude: Double, callback: OpenMeteoRemoteDataSource.ApiCallback<WaterLevelData?>) {
-        // The USGS API can find the nearest site using a bounding box.
-        // We'll create a small box around the user's location.
-        val latMinus = latitude - 0.5
-        val latPlus = latitude + 0.5
-        val lonMinus = longitude - 0.5
-        val lonPlus = longitude + 0.5
+    fun fetchWaterLevels(latitude: Double, longitude: Double, radius: Double, callback: OpenMeteoRemoteDataSource.ApiCallback<List<WaterLevelData>>) {
+        // The USGS API can find the nearest sites using a bounding box.
+        // We'll create a box around the user's location based on the radius.
+        val latMinus = latitude - radius
+        val latPlus = latitude + radius
+        val lonMinus = longitude - radius
+        val lonPlus = longitude + radius
         val bBox = "$lonMinus,$latMinus,$lonPlus,$latPlus"
 
         val url = "https://waterservices.usgs.gov/nwis/iv/?format=json&bBox=$bBox&parameterCd=00065&siteStatus=active"
@@ -40,22 +31,29 @@ class UsgsRemoteDataSource(context: Context) {
             { response ->
                 try {
                     val timeSeries = response.getJSONObject("value").getJSONArray("timeSeries")
-                    if (timeSeries.length() > 0) {
-                        // Get the first and likely closest site
-                        val site = timeSeries.getJSONObject(0)
-                        val siteName = site.getJSONObject("sourceInfo").getString("siteName")
+                    val results = mutableListOf<WaterLevelData>()
+
+                    for (i in 0 until timeSeries.length()) {
+                        val site = timeSeries.getJSONObject(i)
+                        val sourceInfo = site.getJSONObject("sourceInfo")
+                        val siteName = sourceInfo.getString("siteName")
+                        val geoLocation = sourceInfo.getJSONObject("geoLocation").getJSONObject("geogLocation")
+                        val siteLat = geoLocation.getDouble("latitude")
+                        val siteLon = geoLocation.getDouble("longitude")
+
                         val variable = site.getJSONObject("variable")
                         val variableName = variable.getString("variableName")
                         val unit = variable.getJSONObject("unit").getString("unitCode")
-                        val value = site.getJSONArray("values").getJSONObject(0).getJSONArray("value").getJSONObject(0).getString("value")
 
-                        val waterLevelData = WaterLevelData(siteName, variableName, value, unit)
-                        callback.onSuccess(waterLevelData)
-                    } else {
-                        callback.onSuccess(null) // No sites found in the area
+                        val valuesArray = site.getJSONArray("values").getJSONObject(0).getJSONArray("value")
+                        if (valuesArray.length() > 0) {
+                            val value = valuesArray.getJSONObject(0).getString("value")
+                            results.add(WaterLevelData(siteName, siteLat, siteLon, variableName, value, unit))
+                        }
                     }
+                    callback.onSuccess(results)
                 } catch (e: Exception) {
-                    callback.onSuccess(null) // Error parsing data
+                    callback.onSuccess(emptyList())
                 }
             },
             { error ->

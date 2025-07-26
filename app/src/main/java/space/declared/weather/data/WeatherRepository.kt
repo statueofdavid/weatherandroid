@@ -3,9 +3,9 @@ package space.declared.weather.data
 import org.json.JSONObject
 import space.declared.weather.data.source.NoaaRemoteDataSource
 import space.declared.weather.data.source.OpenMeteoRemoteDataSource
-import space.declared.weather.data.source.TidePrediction
+import space.declared.weather.data.TideData
 import space.declared.weather.data.source.UsgsRemoteDataSource
-import space.declared.weather.data.source.WaterLevelData
+import space.declared.weather.data.WaterLevelData
 
 /**
  * The single source of truth for all app data.
@@ -22,50 +22,52 @@ class WeatherRepository(
     }
 
     /**
-     * Gets the full weather data and the relevant water data (tides or river levels).
+     * Gets all data, now accepting the unit system and search radius.
      */
     fun getWeatherDataAndWaterLevels(
         latitude: Double,
         longitude: Double,
+        units: String, // Added units parameter
+        radius: Double,
         callback: OpenMeteoRemoteDataSource.ApiCallback<Pair<JSONObject, WaterData?>>
     ) {
-        // First, fetch the main weather data
-        openMeteoDataSource.fetchWeatherData(latitude, longitude, object : OpenMeteoRemoteDataSource.ApiCallback<JSONObject> {
+        // Pass the units parameter down to the data source
+        openMeteoDataSource.fetchWeatherData(latitude, longitude, units, object : OpenMeteoRemoteDataSource.ApiCallback<JSONObject> {
             override fun onSuccess(weatherResult: JSONObject) {
-                // After getting weather, try to get tide data
-                noaaDataSource.fetchTidePredictions(latitude, longitude, object : OpenMeteoRemoteDataSource.ApiCallback<List<TidePrediction>> {
-                    override fun onSuccess(tideResult: List<TidePrediction>) {
-                        if (tideResult.isNotEmpty()) {
-                            // We found tide data, so we're done.
-                            val waterData = WaterData(isTideData = true, tidePredictions = tideResult)
-                            callback.onSuccess(Pair(weatherResult, waterData))
+                var tideResult: List<TideData>? = null
+                var waterLevelResult: List<WaterLevelData>? = null
+                var completedCalls = 0
+
+                fun checkCompletion() {
+                    completedCalls++
+                    if (completedCalls == 2) {
+                        val waterData = if (!tideResult.isNullOrEmpty() || !waterLevelResult.isNullOrEmpty()) {
+                            WaterData(tideData = tideResult, waterLevel = waterLevelResult)
                         } else {
-                            // No tide data, so now we try to get river data
-                            usgsDataSource.fetchWaterLevel(latitude, longitude, object : OpenMeteoRemoteDataSource.ApiCallback<WaterLevelData?> {
-                                override fun onSuccess(waterLevelResult: WaterLevelData?) {
-                                    val waterData = waterLevelResult?.let {
-                                        WaterData(isTideData = false, waterLevel = it)
-                                    }
-                                    callback.onSuccess(Pair(weatherResult, waterData))
-                                }
-
-                                override fun onError(error: String) {
-                                    // Failed to get river data, just return weather
-                                    callback.onSuccess(Pair(weatherResult, null))
-                                }
-                            })
+                            null
                         }
+                        callback.onSuccess(Pair(weatherResult, waterData))
                     }
+                }
 
-                    override fun onError(error: String) {
-                        // Failed to get tide data, just return weather
-                        callback.onSuccess(Pair(weatherResult, null))
+                noaaDataSource.fetchTidePredictions(latitude, longitude, radius, object : OpenMeteoRemoteDataSource.ApiCallback<List<TideData>> {
+                    override fun onSuccess(result: List<TideData>) {
+                        tideResult = result
+                        checkCompletion()
                     }
+                    override fun onError(error: String) { checkCompletion() }
+                })
+
+                usgsDataSource.fetchWaterLevels(latitude, longitude, radius, object : OpenMeteoRemoteDataSource.ApiCallback<List<WaterLevelData>> {
+                    override fun onSuccess(result: List<WaterLevelData>) {
+                        waterLevelResult = result
+                        checkCompletion()
+                    }
+                    override fun onError(error: String) { checkCompletion() }
                 })
             }
 
             override fun onError(error: String) {
-                // If we can't even get the weather, fail completely
                 callback.onError(error)
             }
         })
