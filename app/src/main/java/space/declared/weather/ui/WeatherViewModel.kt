@@ -1,34 +1,35 @@
 package space.declared.weather.ui
 
 import android.app.Application
+import android.location.Location
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
+import androidx.preference.PreferenceManager
 import org.json.JSONObject
 import space.declared.weather.data.CityResult
 import space.declared.weather.data.DailyForecast
+import space.declared.weather.data.WaterData
 import space.declared.weather.data.WeatherRepository
+import space.declared.weather.data.source.NoaaRemoteDataSource
 import space.declared.weather.data.source.OpenMeteoRemoteDataSource
+import space.declared.weather.data.source.UsgsRemoteDataSource
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
-/**
- * A new data class to hold the detailed weather info for a single selected day.
- * This is what will be displayed in the main weather cards.
- */
 data class DetailedDayWeather(
     val date: String,
-    val tempMax: Int,
-    val tempMin: Int,
+    val tempMax: String, // Changed to String to include unit
+    val tempMin: String, // Changed to String to include unit
     val weatherDescription: String,
     val uvIndex: String,
     val sunrise: String,
     val sunset: String,
     val daylight: String,
-    // The following fields are from the hourly data for the current day
     val pressure: String?,
     val humidity: String?,
     val precipitationChance: String?,
@@ -37,47 +38,45 @@ data class DetailedDayWeather(
     val windGusts: String?
 )
 
-/**
- * This data class represents the entire state of the weather screen.
- * It's emitted once per successful API call.
- */
-data class WeatherScreenState(
+data class MainScreenState(
     val cityName: String,
     val fullForecast: List<DailyForecast>
 )
 
-class WeatherViewModel(application: Application) : AndroidViewModel(application) {
+class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: WeatherRepository
+    private val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(application)
 
-    // LiveData for the list of cities from a search
     private val _cityList = MutableLiveData<List<CityResult>>()
     val cityList: LiveData<List<CityResult>> = _cityList
 
-    // LiveData for the overall screen state (city name and 10-day forecast)
-    private val _weatherScreenState = MutableLiveData<WeatherScreenState>()
-    val weatherScreenState: LiveData<WeatherScreenState> = _weatherScreenState
+    private val _mainScreenState = MutableLiveData<MainScreenState>()
+    val mainScreenState: LiveData<MainScreenState> = _mainScreenState
 
-    // LiveData for the detailed weather of the currently selected day
     private val _selectedDayWeather = MutableLiveData<DetailedDayWeather>()
     val selectedDayWeather: LiveData<DetailedDayWeather> = _selectedDayWeather
 
-    // LiveData for loading and error states
+    private val _waterData = MutableLiveData<WaterData?>()
+    val waterData: LiveData<WaterData?> = _waterData
+
     private val _isLoading = MutableLiveData<Boolean>()
     val isLoading: LiveData<Boolean> = _isLoading
+
     private val _error = MutableLiveData<String>()
     val error: LiveData<String> = _error
 
     private var lastFullResponse: JSONObject? = null
+    private var lastUserLocation: Location? = null
+    private var lastCityName: String? = null
 
     init {
-        val remoteDataSource = OpenMeteoRemoteDataSource(application)
-        repository = WeatherRepository(remoteDataSource)
+        val openMeteoDataSource = OpenMeteoRemoteDataSource(application)
+        val noaaDataSource = NoaaRemoteDataSource(application)
+        val usgsDataSource = UsgsRemoteDataSource(application)
+        repository = WeatherRepository(openMeteoDataSource, noaaDataSource, usgsDataSource)
     }
 
-    /**
-     * Called by the UI when the user searches for a city.
-     */
     fun onCitySearch(query: String) {
         _isLoading.value = true
         repository.getCityList(query, object : OpenMeteoRemoteDataSource.ApiCallback<List<CityResult>> {
@@ -89,7 +88,6 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
                     _cityList.value = result
                 }
             }
-
             override fun onError(error: String) {
                 _error.value = error
                 _isLoading.value = false
@@ -97,22 +95,43 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         })
     }
 
-    /**
-     * Called by the UI to fetch weather for a specific location.
-     */
-    fun fetchWeatherForLocation(latitude: Double, longitude: Double, name: String) {
+    fun fetchWeatherAndWaterData(latitude: Double, longitude: Double, name: String) {
         _isLoading.value = true
-        repository.getWeatherData(latitude, longitude, object : OpenMeteoRemoteDataSource.ApiCallback<JSONObject> {
-            override fun onSuccess(result: JSONObject) {
-                lastFullResponse = result // Cache the full response
-                val forecast = parseFullForecast(result.getJSONObject("daily"))
-                _weatherScreenState.value = WeatherScreenState(name, forecast)
-                // After fetching, automatically select the first day (today)
-                onDaySelected(0)
+        lastUserLocation = Location("").apply {
+            this.latitude = latitude
+            this.longitude = longitude
+        }
+        lastCityName = name
+
+        val units = sharedPreferences.getString("units", "metric") ?: "metric"
+        val radius = sharedPreferences.getString("radius", "1.0")?.toDoubleOrNull() ?: 1.0
+
+        repository.getWeatherDataAndWaterLevels(latitude, longitude, units, radius, object : OpenMeteoRemoteDataSource.ApiCallback<Pair<JSONObject, WaterData?>> {
+            override fun onSuccess(result: Pair<JSONObject, WaterData?>) {
+                Log.i("MainViewModel", "SUCCESS: Weather data received for $name.")
+                val weatherJson = result.first
+                val waterDataResult = result.second
+
+                // Log.d("MainViewModel", "RAW_JSON_RESPONSE: ${weatherJson.toString(2)}")
+
+                lastFullResponse = weatherJson
+                val forecast = parseFullForecast(weatherJson.getJSONObject("daily"))
+                Log.d("MainViewModel", "the forecast is parsed: $forecast")
+                _mainScreenState.value = MainScreenState(name, forecast)
+
+                val sortedWaterData = sortWaterDataByDistance(waterDataResult)
+                _waterData.value = sortedWaterData
+
+                if (forecast.isNotEmpty()) {
+                    val todayWeather = createDetailedWeatherForDay(forecast[0], 0)
+                    _selectedDayWeather.value = todayWeather
+                }
+
+                Log.i("MainViewModel", "COMPLETED: Setting isLoading=false for $name.")
                 _isLoading.value = false
             }
-
             override fun onError(error: String) {
+                Log.e("MainViewModel", "ERROR: $error. Setting isLoading=false.")
                 _error.value = error
                 _isLoading.value = false
             }
@@ -120,10 +139,17 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Called by the UI when the user taps on a forecast tab.
+     * Re-fetches the data for the last known location. Called when settings change.
      */
+    fun refreshDataForCurrentLocation() {
+        if (lastUserLocation != null && lastCityName != null) {
+            fetchWeatherAndWaterData(lastUserLocation!!.latitude, lastUserLocation!!.longitude, lastCityName!!)
+        }
+    }
+
     fun onDaySelected(index: Int) {
-        val fullForecast = _weatherScreenState.value?.fullForecast ?: return
+        Log.i("MainViewModel", "CALL: onDaySelected(index: $index).")
+        val fullForecast = _mainScreenState.value?.fullForecast ?: return
         if (index >= fullForecast.size) return
 
         val selectedDay = fullForecast[index]
@@ -131,11 +157,48 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         _selectedDayWeather.value = detailedWeather
     }
 
-    /**
-     * Creates the detailed weather object for the selected day.
-     * For today (index 0), it uses current hourly data. For future days, some fields will be null.
-     */
+    fun onCitySelectionDialogShown() {
+        _cityList.value = emptyList()
+    }
+
+    fun onSortByDistanceClicked() {
+        _waterData.value = sortWaterDataByDistance(_waterData.value)
+    }
+
+    fun onSortByNameClicked() {
+        val currentData = _waterData.value
+        val sortedTides = currentData?.tideData?.sortedBy { it.stationName }
+        val sortedRivers = currentData?.waterLevel?.sortedBy { it.siteName }
+        _waterData.value = WaterData(sortedTides, sortedRivers)
+    }
+
+    private fun sortWaterDataByDistance(waterData: WaterData?): WaterData? {
+        val userLocation = lastUserLocation ?: return waterData
+
+        val sortedTides = waterData?.tideData?.sortedBy {
+            val stationLocation = Location("").apply {
+                latitude = it.latitude
+                longitude = it.longitude
+            }
+            userLocation.distanceTo(stationLocation)
+        }
+
+        val sortedRivers = waterData?.waterLevel?.sortedBy {
+            val stationLocation = Location("").apply {
+                latitude = it.latitude
+                longitude = it.longitude
+            }
+            userLocation.distanceTo(stationLocation)
+        }
+
+        return WaterData(sortedTides, sortedRivers)
+    }
+
     private fun createDetailedWeatherForDay(day: DailyForecast, index: Int): DetailedDayWeather {
+        val units = sharedPreferences.getString("units", "metric") ?: "metric"
+        val windUnit = if (units == "imperial") "mph" else "km/h"
+        val tempUnit = if (units == "imperial") "°F" else "°C"
+
         val daily = lastFullResponse?.getJSONObject("daily")
         val uv = daily?.getJSONArray("uv_index_max")?.getDouble(index) ?: 0.0
         val sunriseStr = daily?.getJSONArray("sunrise")?.getString(index) ?: ""
@@ -149,7 +212,6 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         var windVal: String? = null
         var windGustsVal: String? = null
 
-        // Only today's forecast (index 0) will have current/hourly details
         if (index == 0 && lastFullResponse != null) {
             val current = lastFullResponse!!.getJSONObject("current")
             val hourly = lastFullResponse!!.getJSONObject("hourly")
@@ -167,14 +229,14 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             humidityVal = "Humidity: $hum%"
             precipChanceVal = "Precipitation Chance: $precipChance%"
             cloudCoverVal = "Cloud Cover: $cloud%"
-            windVal = "Wind: ${getWindDirection(windDir)} at ${windSpeed.roundToInt()} km/h"
-            windGustsVal = "Gusts: ${windGust.roundToInt()} km/h"
+            windVal = "Wind: ${getWindDirection(windDir)} at ${windSpeed.roundToInt()} $windUnit"
+            windGustsVal = "Gusts: ${windGust.roundToInt()} $windUnit"
         }
 
         return DetailedDayWeather(
             date = day.date,
-            tempMax = day.tempMax.roundToInt(),
-            tempMin = day.tempMin.roundToInt(),
+            tempMax = "${day.tempMax.roundToInt()}$tempUnit",
+            tempMin = "${day.tempMin.roundToInt()}$tempUnit",
             weatherDescription = getWeatherDescriptionFromCode(day.weatherCode),
             uvIndex = "UV Index: ${uv.roundToInt()} (${getUvIndexRisk(uv)})",
             sunrise = "Sunrise: ${formatTime(sunriseStr)}",
@@ -189,9 +251,6 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         )
     }
 
-    /**
-     * Parses just the 10-day forecast list from the "daily" JSON object.
-     */
     private fun parseFullForecast(daily: JSONObject): List<DailyForecast> {
         val forecastList = mutableListOf<DailyForecast>()
         val timeArray = daily.getJSONArray("time")

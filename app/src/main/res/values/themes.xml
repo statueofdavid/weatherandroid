@@ -1,10 +1,39 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
-    <!-- Changed parent to a NoActionBar theme -->
     <style name="Base.Theme.WeatherApp" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your light theme here. -->
-        <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
+        <!-- Primary brand color. -->
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorOnPrimary">@color/white</item>
+
+        <!-- Make sure all standard text is black -->
+        <item name="android:textColor">@color/black</item>
+
+        <!-- Point to our custom preference theme -->
+        <item name="preferenceTheme">@style/AppPreferenceTheme</item>
+
+        <!-- Apply custom styles to components -->
+        <item name="bottomNavigationStyle">@style/AppBottomNavigation</item>
+        <item name="materialButtonStyle">@style/AppButton</item>
     </style>
 
     <style name="Theme.WeatherApp" parent="Base.Theme.WeatherApp" />
+
+    <!-- Custom theme for the settings screen -->
+    <style name="AppPreferenceTheme" parent="PreferenceThemeOverlay.v14.Material">
+        <item name="android:textColorPrimary">@android:color/white</item>
+        <item name="android:textColorSecondary">#E0E0E0</item>
+    </style>
+
+    <!-- Custom style for the BottomNavigationView -->
+    <style name="AppBottomNavigation" parent="Widget.Material3.BottomNavigationView">
+        <item name="itemIconTint">@color/bottom_nav_color</item>
+        <item name="itemTextColor">@color/bottom_nav_color</item>
+        <item name="android:background">@color/colorPrimary</item>
+    </style>
+
+    <!-- Custom style for Buttons -->
+    <style name="AppButton" parent="Widget.Material3.Button">
+        <item name="android:textColor">@color/white</item>
+    </style>
+
 </resources>

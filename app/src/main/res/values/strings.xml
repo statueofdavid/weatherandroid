@@ -1,3 +1,43 @@
 <resources>
-    <string name="app_name">declared space weather</string>
+    <string name="app_name">Declared Space Weather</string>
+
+    <!-- Unit Preference -->
+    <string-array name="unit_entries">
+        <item>Metric (°C, km/h)</item>
+        <item>Imperial (°F, mph)</item>
+    </string-array>
+    <string-array name="unit_values">
+        <item>metric</item>
+        <item>imperial</item>
+    </string-array>
+
+    <!-- Radius Preference -->
+    <string-array name="radius_entries">
+        <item>5 miles / 8 km</item>
+        <item>10 miles / 16 km</item>
+        <item>20 miles / 32 km</item>
+        <item>40 miles / 64 km</item>
+        <item>80 miles / 128 km</item>
+        <item>160 miles / 257 km</item>
+    </string-array>
+    <string-array name="radius_values">
+        <item>0.1</item>
+        <item>0.15</item>
+        <item>0.3</item>
+        <item>0.6</item>
+        <item>1.2</item>
+        <item>2.4</item>
+    </string-array>
+
+    <!-- Dark Mode Preference -->
+    <string-array name="dark_mode_entries">
+        <item>System Default</item>
+        <item>Light</item>
+        <item>Dark</item>
+    </string-array>
+    <string-array name="dark_mode_values">
+        <item>system</item>
+        <item>light</item>
+        <item>dark</item>
+    </string-array>
 </resources>

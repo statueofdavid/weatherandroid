@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <PreferenceCategory app:title="General">
+
+        <ListPreference
+            app:key="units"
+            app:title="Unit System"
+            app:summary="Metric (°C, km/h)"
+            app:entries="@array/unit_entries"
+            app:entryValues="@array/unit_values"
+            app:defaultValue="metric" />
+
+        <ListPreference
+            app:key="radius"
+            app:title="Water Data Search Radius"
+            app:summary="70 miles / 111 km"
+            app:entries="@array/radius_entries"
+            app:entryValues="@array/radius_values"
+            app:defaultValue="1.0" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="Data">
+
+        <Preference
+            app:key="update_stations"
+            app:title="Update Tide Station List"
+            app:summary="Fetch the latest station list from NOAA" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="Appearance">
+
+        <ListPreference
+            app:key="dark_mode"
+            app:title="Dark Mode"
+            app:summary="System Default"
+            app:entries="@array/dark_mode_entries"
+            app:entryValues="@array/dark_mode_values"
+            app:defaultValue="system" />
+
+    </PreferenceCategory>
+
+</PreferenceScreen>

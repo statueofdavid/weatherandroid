@@ -4,26 +4,21 @@ import android.content.Context
 import com.android.volley.Request
 import com.android.volley.toolbox.JsonObjectRequest
 import com.android.volley.toolbox.Volley
-import space.declared.weather.data.CityResult
 import org.json.JSONObject
+import space.declared.weather.data.CityResult
 
 /**
  * Handles all network operations to fetch data from the Open-Meteo API.
  */
 class OpenMeteoRemoteDataSource(context: Context) {
 
-    // A single Volley request queue for the entire data source
     private val requestQueue = Volley.newRequestQueue(context.applicationContext)
 
-    // A generic callback interface for handling API responses
     interface ApiCallback<T> {
         fun onSuccess(result: T)
         fun onError(error: String)
     }
 
-    /**
-     * Fetches a list of cities matching the search query.
-     */
     fun fetchCityList(query: String, callback: ApiCallback<List<CityResult>>) {
         val url = "https://geocoding-api.open-meteo.com/v1/search?name=$query&count=5&language=en&format=json"
 
@@ -31,7 +26,7 @@ class OpenMeteoRemoteDataSource(context: Context) {
             { response ->
                 val resultsArray = response.optJSONArray("results")
                 if (resultsArray == null || resultsArray.length() == 0) {
-                    callback.onSuccess(emptyList()) // Return empty list if no results
+                    callback.onSuccess(emptyList())
                     return@JsonObjectRequest
                 }
 
@@ -48,17 +43,20 @@ class OpenMeteoRemoteDataSource(context: Context) {
     }
 
     /**
-     * Fetches the full weather data for a given latitude and longitude.
+     * Fetches the full weather data, now accepting a unit system preference.
      */
-    fun fetchWeatherData(latitude: Double, longitude: Double, callback: ApiCallback<JSONObject>) {
+    fun fetchWeatherData(latitude: Double, longitude: Double, units: String, callback: ApiCallback<JSONObject>) {
+        val tempUnit = if (units == "imperial") "fahrenheit" else "celsius"
+        val windUnit = if (units == "imperial") "mph" else "kmh"
+
         val currentParams = "temperature_2m,weather_code,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m"
         val hourlyParams = "relative_humidity_2m,precipitation_probability,cloud_cover"
         val dailyParams = "weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,daylight_duration,uv_index_max"
-        val url = "https://api.open-meteo.com/v1/forecast?latitude=$latitude&longitude=$longitude&current=$currentParams&hourly=$hourlyParams&daily=$dailyParams&temperature_unit=celsius&wind_speed_unit=kmh&precipitation_unit=mm&timezone=auto&forecast_days=10"
+        val url = "https://api.open-meteo.com/v1/forecast?latitude=$latitude&longitude=$longitude&current=$currentParams&hourly=$hourlyParams&daily=$dailyParams&temperature_unit=$tempUnit&wind_speed_unit=$windUnit&precipitation_unit=mm&timezone=auto&forecast_days=10"
 
         val jsonObjectRequest = JsonObjectRequest(Request.Method.GET, url, null,
             { response ->
-                callback.onSuccess(response) // Return the raw JSON object on success
+                callback.onSuccess(response)
             },
             { error ->
                 callback.onError(error.message ?: "Unknown error fetching weather data")
