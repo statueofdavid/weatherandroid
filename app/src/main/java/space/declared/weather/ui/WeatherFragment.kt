@@ -1,12 +1,17 @@
 package space.declared.weather.ui
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.util.Log
+import android.os.Handler
+import android.os.Looper
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -14,10 +19,11 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
+import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.recyclerview.widget.RecyclerView
 import com.google.android.gms.location.LocationServices
 import com.google.android.material.tabs.TabLayout
 import space.declared.weather.R
@@ -34,7 +40,6 @@ class WeatherFragment : Fragment() {
     private lateinit var progressBar: ProgressBar
     private lateinit var weatherDataContainer: LinearLayout
     private lateinit var citySearch: EditText
-    private lateinit var searchButton: Button
     private lateinit var locationButton: Button
     private lateinit var forecastTabs: TabLayout
     private lateinit var cityName: TextView
@@ -50,6 +55,11 @@ class WeatherFragment : Fragment() {
     private lateinit var cloudCover: TextView
     private lateinit var wind: TextView
     private lateinit var windGusts: TextView
+    private lateinit var citySearchRecyclerView: RecyclerView
+    private lateinit var citySearchAdapter: CitySearchAdapter
+    private lateinit var citySearchCardContainer: CardView
+    private val searchHandler = Handler(Looper.getMainLooper())
+    private var searchRunnable: Runnable? = null
 
     private val fusedLocationClient by lazy { LocationServices.getFusedLocationProviderClient(requireActivity()) }
 
@@ -67,7 +77,6 @@ class WeatherFragment : Fragment() {
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        // Inflate the layout for this fragment
         return inflater.inflate(R.layout.fragment_weather, container, false)
     }
 
@@ -75,15 +84,16 @@ class WeatherFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         initializeViews(view)
         setupClickListeners()
-        setupObservers() // All logic is now driven by observers
+        setupSearch()
+        setupObservers()
     }
 
-    // --- View Initialization ---
     private fun initializeViews(view: View) {
         progressBar = view.findViewById(R.id.progressBar)
         weatherDataContainer = view.findViewById(R.id.weatherDataContainer)
         citySearch = view.findViewById(R.id.citySearch)
-        searchButton = view.findViewById(R.id.searchButton)
+        citySearchRecyclerView = view.findViewById(R.id.citySearchRecyclerView)
+        citySearchCardContainer = view.findViewById(R.id.citySearchCardContainer)
         locationButton = view.findViewById(R.id.locationButton)
         forecastTabs = view.findViewById(R.id.forecastTabs)
         cityName = view.findViewById(R.id.cityName)
@@ -101,45 +111,61 @@ class WeatherFragment : Fragment() {
         windGusts = view.findViewById(R.id.windGusts)
     }
 
-    // --- Click Listeners ---
     private fun setupClickListeners() {
-        searchButton.setOnClickListener {
-            val city = citySearch.text.toString().trim()
-            if (city.isNotEmpty()) {
-                viewModel.onCitySearch(city)
-            } else {
-                Toast.makeText(requireContext(), "Please enter a city name", Toast.LENGTH_SHORT).show()
-            }
-        }
         locationButton.setOnClickListener { getCurrentLocationWeather() }
     }
 
-    // --- State Observers (The Core Fix) ---
+    private fun setupSearch() {
+        citySearchAdapter = CitySearchAdapter { city ->
+            // When a city is clicked, fetch its weather
+            val displayName = if (city.state != null && city.state.isNotEmpty()) "${city.name}, ${city.state}" else city.name
+            viewModel.fetchWeatherAndWaterData(city.latitude, city.longitude, displayName)
+
+            // Hide the keyboard and the search results list
+            val imm = requireContext().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.hideSoftInputFromWindow(view?.windowToken, 0)
+            citySearch.clearFocus()
+            citySearch.text.clear()
+            viewModel.onCitySelectionDone()
+        }
+
+        citySearchRecyclerView.adapter = citySearchAdapter
+
+        citySearch.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                searchRunnable?.let { searchHandler.removeCallbacks(it) }
+            }
+
+            override fun afterTextChanged(s: Editable?) {
+                val query = s.toString().trim()
+                if (query.length > 2) {
+                    searchRunnable = Runnable { viewModel.onCitySearch(query) }
+                    searchHandler.postDelayed(searchRunnable!!, 500L) // 500ms delay
+                } else {
+                    viewModel.clearSearchAndHideCard()                }
+            }
+        })
+    }
+
     private fun setupObservers() {
-        // Observer for loading state
         viewModel.isLoading.observe(viewLifecycleOwner) { isLoading ->
-            // The loading flag ONLY controls the progress bar visibility.
             progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
-            // It ALSO hides the content while loading.
             if (isLoading) {
                 weatherDataContainer.visibility = View.GONE
+            } else {
+                weatherDataContainer.visibility = View.VISIBLE
             }
         }
 
-        // Observer for the main screen data (city name and forecast tabs)
         viewModel.mainScreenState.observe(viewLifecycleOwner) { state ->
-            // This is the point of success. Hide the progress bar and show the content.
             progressBar.visibility = View.GONE
             weatherDataContainer.visibility = View.VISIBLE
-
-            // Populate the city name and setup the forecast tabs
             cityName.text = state.cityName
             setupForecastTabs(state.fullForecast)
         }
 
-        // Observer for the detailed weather of the selected day
         viewModel.selectedDayWeather.observe(viewLifecycleOwner) { details ->
-            // This just populates the text views. It does not change visibility.
             temperature.text = "${details.tempMax} / ${details.tempMin}"
             weatherDescription.text = details.weatherDescription
             uvIndex.text = details.uvIndex
@@ -154,31 +180,25 @@ class WeatherFragment : Fragment() {
             windGusts.text = details.windGusts ?: "Gusts: N/A"
         }
 
-        // Observer for handling the city selection dialog
         viewModel.cityList.observe(viewLifecycleOwner) { cities ->
             if (cities.isNotEmpty()) {
-                if (cities.size > 1) {
-                    showCitySelectionDialog(cities)
-                } else {
-                    val city = cities.first()
-                    viewModel.fetchWeatherAndWaterData(city.latitude, city.longitude, city.name)
-                }
-                viewModel.onCitySelectionDialogShown() // Clear the event
+                citySearchAdapter.submitList(cities)
             }
         }
 
-        // Observer for errors
+        viewModel.showCitySearchCard.observe(viewLifecycleOwner) { show ->
+            citySearchCardContainer.visibility = if (show) View.VISIBLE else View.GONE
+        }
+
         viewModel.error.observe(viewLifecycleOwner) { error ->
             if (error.isNotEmpty()) {
                 Toast.makeText(requireContext(), error, Toast.LENGTH_LONG).show()
-                // On error, hide the progress bar and the content.
                 progressBar.visibility = View.GONE
                 weatherDataContainer.visibility = View.GONE
             }
         }
     }
 
-    // --- Helper Functions ---
     private fun setupForecastTabs(forecast: List<DailyForecast>) {
         forecastTabs.removeAllTabs()
         forecast.forEachIndexed { index, day ->
@@ -193,25 +213,6 @@ class WeatherFragment : Fragment() {
             override fun onTabUnselected(tab: TabLayout.Tab?) {}
             override fun onTabReselected(tab: TabLayout.Tab?) {}
         })
-    }
-
-    private fun showCitySelectionDialog(cities: List<CityResult>) {
-        val cityNames = cities.map {
-            if (it.state != null && it.state.isNotEmpty()) "${it.name}, ${it.state}, ${it.country}"
-            else "${it.name}, ${it.country}"
-        }.toTypedArray()
-
-        AlertDialog.Builder(requireContext())
-            .setTitle("Select a City")
-            .setItems(cityNames) { dialog, which ->
-                val selectedCity = cities[which]
-                val displayName = if (selectedCity.state != null && selectedCity.state.isNotEmpty()) "${selectedCity.name}, ${selectedCity.state}"
-                else selectedCity.name
-                viewModel.fetchWeatherAndWaterData(selectedCity.latitude, selectedCity.longitude, displayName)
-                dialog.dismiss()
-            }
-            .setNegativeButton("Cancel") { dialog, _ -> dialog.dismiss() }
-            .show()
     }
 
     private fun getCurrentLocationWeather() {
