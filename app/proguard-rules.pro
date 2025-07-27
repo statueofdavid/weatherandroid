@@ -19,3 +19,8 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Keep all data model classes (and their members) in the data package
+# This prevents ProGuard/R8 from removing them in release builds,
+# which is crucial for JSON serialization libraries like GSON or Moshi.
+-keep class space.declared.weather.data.** { *; }

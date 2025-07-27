@@ -113,6 +113,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val waterDataResult = result.second
 
                 // Log.d("MainViewModel", "RAW_JSON_RESPONSE: ${weatherJson.toString(2)}")
+                Log.d("MainViewModel", "DATA_CHECK - Tide Stations: ${waterDataResult?.tideData?.size ?: 0}, River/Lake Stations: ${waterDataResult?.waterLevel?.size ?: 0}")
 
                 lastFullResponse = weatherJson
                 val forecast = parseFullForecast(weatherJson.getJSONObject("daily"))
