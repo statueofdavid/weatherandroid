@@ -66,6 +66,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _error = MutableLiveData<String>()
     val error: LiveData<String> = _error
 
+    private val _showCitySearchCard = MutableLiveData<Boolean>()
+    val showCitySearchCard: LiveData<Boolean> = _showCitySearchCard
+
     private var lastFullResponse: JSONObject? = null
     private var lastUserLocation: Location? = null
     private var lastCityName: String? = null
@@ -74,25 +77,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val openMeteoDataSource = OpenMeteoRemoteDataSource(application)
         val noaaDataSource = NoaaRemoteDataSource(application)
         val usgsDataSource = UsgsRemoteDataSource(application)
+
+        _showCitySearchCard.value = false
         repository = WeatherRepository(openMeteoDataSource, noaaDataSource, usgsDataSource)
     }
 
     fun onCitySearch(query: String) {
-        _isLoading.value = true
-        repository.getCityList(query, object : OpenMeteoRemoteDataSource.ApiCallback<List<CityResult>> {
-            override fun onSuccess(result: List<CityResult>) {
-                if (result.isEmpty()) {
-                    _error.value = "City not found"
+        if (query.length > 2) {
+            _isLoading.value = true
+            _showCitySearchCard.value = true // Show card when search starts
+            repository.getCityList(query, object : OpenMeteoRemoteDataSource.ApiCallback<List<CityResult>> {
+                override fun onSuccess(result: List<CityResult>) {
+                    _cityList.value = result // Always update cityList
                     _isLoading.value = false
-                } else {
-                    _cityList.value = result
+
+                    // If results are empty, hide the card
+                    if (result.isEmpty()) {
+                        _error.value = "City not found"
+                        _showCitySearchCard.value = false
+                    }
                 }
-            }
-            override fun onError(error: String) {
-                _error.value = error
-                _isLoading.value = false
-            }
-        })
+                override fun onError(error: String) {
+                    _error.value = error
+                    _isLoading.value = false
+                    _showCitySearchCard.value = false // Hide on error
+                    _cityList.value = emptyList() // Clear list on error
+                }
+            })
+        } else {
+            // Query is too short (or empty)
+            clearSearchAndHideCard()
+        }
     }
 
     fun fetchWeatherAndWaterData(latitude: Double, longitude: Double, name: String) {
@@ -160,6 +175,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onCitySelectionDialogShown() {
         _cityList.value = emptyList()
+        _showCitySearchCard.value = false
+    }
+
+    fun hideCitySearchCard() {
+        _showCitySearchCard.value = false
+    }
+
+    fun clearSearchAndHideCard() {
+        _cityList.value = emptyList()
+        _showCitySearchCard.value = false
+    }
+
+    fun onCitySelectionDone() {
+        _cityList.value = emptyList() // Clear the list
+        _showCitySearchCard.value = false // Hide the card
     }
 
     fun onSortByDistanceClicked() {
