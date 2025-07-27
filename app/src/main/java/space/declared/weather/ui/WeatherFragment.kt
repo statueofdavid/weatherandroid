@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -61,15 +62,24 @@ class WeatherFragment : Fragment() {
     private val searchHandler = Handler(Looper.getMainLooper())
     private var searchRunnable: Runnable? = null
 
-    private val fusedLocationClient by lazy { LocationServices.getFusedLocationProviderClient(requireActivity()) }
+    private val fusedLocationClient by lazy {
+        LocationServices.getFusedLocationProviderClient(requireActivity()) }
 
-    private val locationPermissionRequest = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        when {
-            permissions.getOrDefault(Manifest.permission.ACCESS_FINE_LOCATION, false) -> getCurrentLocationWeather()
-            permissions.getOrDefault(Manifest.permission.ACCESS_COARSE_LOCATION, false) -> getCurrentLocationWeather()
-            else -> Toast.makeText(requireContext(), "Location permission denied", Toast.LENGTH_SHORT).show()
+    private lateinit var locationPermissionRequest:
+            androidx.activity.result.ActivityResultLauncher<Array<String>>
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        Log.i("WeatherFragment","onCreate called")
+        super.onCreate(savedInstanceState)
+
+        locationPermissionRequest = registerForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions()
+        ) { permissions ->
+            when {
+                permissions.getOrDefault(Manifest.permission.ACCESS_FINE_LOCATION, false) -> getCurrentLocationWeather()
+                permissions.getOrDefault(Manifest.permission.ACCESS_COARSE_LOCATION, false) -> getCurrentLocationWeather()
+                else -> Toast.makeText(requireContext(), "Location permission denied", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -77,15 +87,26 @@ class WeatherFragment : Fragment() {
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
+        Log.i("WeatherFragment","onCretaedView Called")
         return inflater.inflate(R.layout.fragment_weather, container, false)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         initializeViews(view)
+        Log.i("WeatherFragment","onViewCreated Called")
+
         setupClickListeners()
         setupSearch()
         setupObservers()
+
+        val isLoadingValue = viewModel.isLoading.value ?: false
+        if (viewModel.mainScreenState.value == null && !isLoadingValue) {
+            Log.i("WeatherFragment", "onViewCreated: Triggering initial getCurrentLocationWeather() as no data is loaded.")
+            getCurrentLocationWeather()
+        } else if (viewModel.mainScreenState.value != null) {
+            Log.i("WeatherFragment", "onViewCreated: ViewModel already has data. Expecting UI to update via observers.")
+        }
     }
 
     private fun initializeViews(view: View) {
@@ -216,6 +237,9 @@ class WeatherFragment : Fragment() {
     }
 
     private fun getCurrentLocationWeather() {
+        Log.i("WeatherFragment::getCurrentLocationWeather", "isLoading, ${viewModel.isLoading.value}")
+        viewModel.setLoading(true)
+
         if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             fusedLocationClient.lastLocation.addOnSuccessListener { location ->
                 if (location != null) {
