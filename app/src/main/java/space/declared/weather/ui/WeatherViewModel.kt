@@ -163,6 +163,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setLoading(loading: Boolean) {
+        _isLoading.value = loading
+        // You could also add logging or other logic here if needed,
+        // which is the benefit of letting the ViewModel control its state.
+        Log.d("WeatherViewModel::setLoading", "setLoading: ViewModel's isLoading set to $loading")
+    }
+
     fun onDaySelected(index: Int) {
         Log.i("MainViewModel", "CALL: onDaySelected(index: $index).")
         val fullForecast = _mainScreenState.value?.fullForecast ?: return
