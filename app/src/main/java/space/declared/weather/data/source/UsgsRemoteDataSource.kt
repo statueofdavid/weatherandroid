@@ -1,10 +1,18 @@
 package space.declared.weather.data.source
 
 import android.content.Context
+import android.util.Log
 import com.android.volley.Request
 import com.android.volley.toolbox.JsonObjectRequest
 import com.android.volley.toolbox.Volley
 import space.declared.weather.data.WaterLevelData
+import java.util.Locale
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
+
+// ADDED: A data class to hold bounding box coordinates for clarity
+data class BoundingBox(val minLat: Double, val maxLat: Double, val minLon: Double, val maxLon: Double)
 
 /**
  * Handles network operations to fetch water level data from the USGS API.
@@ -16,16 +24,22 @@ class UsgsRemoteDataSource(context: Context) {
     /**
      * Fetches the latest water level reading for all monitoring sites within a given radius.
      */
-    fun fetchWaterLevels(latitude: Double, longitude: Double, radius: Double, callback: OpenMeteoRemoteDataSource.ApiCallback<List<WaterLevelData>>) {
-        // The USGS API can find the nearest sites using a bounding box.
-        // We'll create a box around the user's location based on the radius.
-        val latMinus = latitude - radius
-        val latPlus = latitude + radius
-        val lonMinus = longitude - radius
-        val lonPlus = longitude + radius
-        val bBox = "$lonMinus,$latMinus,$lonPlus,$latPlus"
+    // CHANGED: The 'radius' parameter is now explicitly 'radiusInMiles' for clarity
+    fun fetchWaterLevels(latitude: Double, longitude: Double, radiusInMiles: Double, callback: OpenMeteoRemoteDataSource.ApiCallback<List<WaterLevelData>>) {
+        // Calculate the bounding box
+        val boundingBox = calculateBoundingBox(latitude, longitude, radiusInMiles)
 
+        // Format each coordinate to 7 decimal places ... because the API
+        val minLonStr = String.format(Locale.US, "%.7f", boundingBox.minLon)
+        val minLatStr = String.format(Locale.US, "%.7f", boundingBox.minLat)
+        val maxLonStr = String.format(Locale.US, "%.7f", boundingBox.maxLon)
+        val maxLatStr = String.format(Locale.US, "%.7f", boundingBox.maxLat)
+
+        // Build the bBox string using the formatted values
+        val bBox = "$minLonStr,$minLatStr,$maxLonStr,$maxLatStr"
         val url = "https://waterservices.usgs.gov/nwis/iv/?format=json&bBox=$bBox&parameterCd=00065&siteStatus=active"
+
+        Log.d("UsgsDataSource", "Requesting URL: $url")
 
         val jsonObjectRequest = JsonObjectRequest(Request.Method.GET, url, null,
             { response ->
@@ -53,13 +67,38 @@ class UsgsRemoteDataSource(context: Context) {
                     }
                     callback.onSuccess(results)
                 } catch (e: Exception) {
-                    callback.onSuccess(emptyList())
+                    Log.e("UsgsDataSource", "Error parsing USGS response", e)
+                    // It's better to call onError for parsing failures
+                    callback.onError("Failed to parse USGS data")
                 }
             },
             { error ->
+                Log.e("UsgsDataSource", "USGS Request Failed: ${error.message}")
                 callback.onError(error.message ?: "Unknown USGS error")
             }
         )
         requestQueue.add(jsonObjectRequest)
+    }
+
+    // ADDED: The accurate bounding box calculation helper function
+    /**
+     * Calculates a geographic bounding box from a center point and a radius in miles.
+     */
+    private fun calculateBoundingBox(centerLat: Double, centerLon: Double, radiusInMiles: Double): BoundingBox {
+        // Conversion factors
+        val milesPerDegreeLat = 69.0
+        val milesPerDegreeLon = cos(Math.toRadians(centerLat)) * milesPerDegreeLat
+
+        // Calculate the change in degrees
+        val latDelta = radiusInMiles / milesPerDegreeLat
+        val lonDelta = radiusInMiles / milesPerDegreeLon
+
+        // Calculate the min/max coordinates
+        val minLat = centerLat - latDelta
+        val maxLat = centerLat + latDelta
+        val minLon = centerLon - lonDelta
+        val maxLon = centerLon + lonDelta
+
+        return BoundingBox(minLat, maxLat, minLon, maxLon)
     }
 }

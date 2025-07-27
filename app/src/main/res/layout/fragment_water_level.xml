@@ -5,6 +5,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
+    android:clipToPadding="false"
+    android:paddingBottom="96dp"
     tools:context=".ui.WaterLevelFragment">
 
     <ProgressBar
@@ -58,7 +60,8 @@
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/waterLevelRecyclerView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:padding="8dp"
         android:visibility="gone"
         app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"

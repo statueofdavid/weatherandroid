@@ -21,12 +21,12 @@
         <item>160 miles / 257 km</item>
     </string-array>
     <string-array name="radius_values">
-        <item>0.1</item>
-        <item>0.15</item>
-        <item>0.3</item>
-        <item>0.6</item>
-        <item>1.2</item>
-        <item>2.4</item>
+        <item>5</item>
+        <item>10</item>
+        <item>20</item>
+        <item>40</item>
+        <item>80</item>
+        <item>160</item>
     </string-array>
 
     <!-- Dark Mode Preference -->

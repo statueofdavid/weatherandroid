@@ -1,5 +1,6 @@
 package space.declared.weather.data
 
+import android.util.Log
 import org.json.JSONObject
 import space.declared.weather.data.source.NoaaRemoteDataSource
 import space.declared.weather.data.source.OpenMeteoRemoteDataSource
@@ -31,6 +32,9 @@ class WeatherRepository(
         radius: Double,
         callback: OpenMeteoRemoteDataSource.ApiCallback<Pair<JSONObject, WaterData?>>
     ) {
+        // At the beginning of the function
+        Log.d("WeatherRepository", "Searching for stations with lat=${latitude}, lon=${longitude}, radius=${radius} miles")
+
         // Pass the units parameter down to the data source
         openMeteoDataSource.fetchWeatherData(latitude, longitude, units, object : OpenMeteoRemoteDataSource.ApiCallback<JSONObject> {
             override fun onSuccess(weatherResult: JSONObject) {

@@ -1,6 +1,7 @@
 package space.declared.weather.data.source
 
 import android.content.Context
+import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
@@ -11,7 +12,10 @@ import org.json.JSONObject
 import space.declared.weather.data.TideData
 import space.declared.weather.data.TidePrediction
 import java.io.InputStreamReader
-import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * Handles network operations to fetch tide data from the NOAA API.
@@ -24,39 +28,44 @@ class NoaaRemoteDataSource(private val context: Context) {
     /**
      * Fetches tide predictions for all stations within a given radius.
      */
-    fun fetchTidePredictions(latitude: Double, longitude: Double, radius: Double, callback: OpenMeteoRemoteDataSource.ApiCallback<List<TideData>>) {
+    // CHANGED: The 'radius' parameter is now explicitly 'radiusInMiles' for clarity
+    fun fetchTidePredictions(latitude: Double, longitude: Double, radiusInMiles: Double, callback: OpenMeteoRemoteDataSource.ApiCallback<List<TideData>>) {
         if (stationList == null) {
             stationList = loadStationsFromAssets()
         }
 
+        // CHANGED: The incorrect filtering logic is replaced with the accurate Haversine formula calculation
         val nearbyStations = stationList?.filter { station ->
-            val latDistance = abs(station.lat - latitude)
-            val lonDistance = abs(station.lon - longitude)
-            latDistance < radius && lonDistance < radius
+            val distance = calculateDistanceInMiles(latitude, longitude, station.lat, station.lon)
+            distance <= radiusInMiles
         }
 
         if (nearbyStations.isNullOrEmpty()) {
+            Log.d("NoaaDataSource", "No nearby tide stations found within $radiusInMiles miles.")
             callback.onSuccess(emptyList())
             return
         }
 
+        Log.d("NoaaDataSource", "Found ${nearbyStations.size} nearby tide stations. Fetching predictions...")
+
         val results = mutableListOf<TideData>()
         var completedCalls = 0
+        val totalCalls = nearbyStations.size
 
         nearbyStations.forEach { station ->
             fetchPredictionsForStation(station, object : OpenMeteoRemoteDataSource.ApiCallback<TideData?> {
                 override fun onSuccess(result: TideData?) {
                     result?.let { results.add(it) }
                     completedCalls++
-                    if (completedCalls == nearbyStations.size) {
+                    if (completedCalls == totalCalls) {
                         callback.onSuccess(results)
                     }
                 }
 
                 override fun onError(error: String) {
                     completedCalls++
-                    if (completedCalls == nearbyStations.size) {
-                        callback.onSuccess(results)
+                    if (completedCalls == totalCalls) {
+                        callback.onSuccess(results) // Still return success with what we have
                     }
                 }
             })
@@ -66,12 +75,14 @@ class NoaaRemoteDataSource(private val context: Context) {
     private fun fetchPredictionsForStation(station: TideStation, callback: OpenMeteoRemoteDataSource.ApiCallback<TideData?>) {
         val url = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?station=${station.id}&date=today&product=predictions&datum=MLLW&time_zone=lst_ldt&interval=hilo&units=english&format=json"
 
+        Log.d("NoaaDataSource", "Requesting URL: $url")
+
         val jsonObjectRequest = JsonObjectRequest(Request.Method.GET, url, null,
             { response ->
                 try {
                     val predictionsArray = response.optJSONArray("predictions")
                     if (predictionsArray == null) {
-                        callback.onSuccess(null)
+                        callback.onSuccess(null) // Station may not have tide predictions
                         return@JsonObjectRequest
                     }
 
@@ -88,14 +99,35 @@ class NoaaRemoteDataSource(private val context: Context) {
                     }
                     callback.onSuccess(TideData(station.name, station.lat, station.lon, predictions))
                 } catch (e: Exception) {
-                    callback.onError("Error parsing tide predictions")
+                    Log.e("NoaaDataSource", "Error parsing NOAA response", e)
+                    callback.onError("Error parsing tide predictions for station ${station.id}")
                 }
             },
             { error ->
-                callback.onError(error.message ?: "Unknown error fetching tide predictions")
+                Log.e("NoaaDataSource", "NOAA Request Failed: ${error.message}")
+                callback.onError(error.message ?: "Unknown error fetching predictions for station ${station.id}")
             }
         )
         requestQueue.add(jsonObjectRequest)
+    }
+
+    // ADDED: The accurate distance calculation helper function
+    /**
+     * Calculates the distance between two lat/lon points in miles using the Haversine formula.
+     */
+    private fun calculateDistanceInMiles(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val earthRadiusMiles = 3958.8 // Radius of the Earth in miles
+
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+
+        val a = sin(dLat / 2) * sin(dLat / 2) +
+                cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
+                sin(dLon / 2) * sin(dLon / 2)
+
+        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+
+        return earthRadiusMiles * c
     }
 
     private fun loadStationsFromAssets(): List<TideStation> {
