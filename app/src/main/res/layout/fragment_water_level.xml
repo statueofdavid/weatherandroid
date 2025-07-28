@@ -6,7 +6,6 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:clipToPadding="false"
-    android:paddingBottom="96dp"
     tools:context=".ui.WaterLevelFragment">
 
     <ProgressBar
