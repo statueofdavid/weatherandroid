@@ -11,6 +11,7 @@ import com.android.volley.toolbox.Volley
 import org.json.JSONObject
 import space.declared.weather.data.TideData
 import space.declared.weather.data.TidePrediction
+import space.declared.weather.data.local.StationEntity
 import java.io.InputStreamReader
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -24,6 +25,24 @@ class NoaaRemoteDataSource(private val context: Context) {
 
     private val requestQueue = Volley.newRequestQueue(context.applicationContext)
     private var stationList: List<TideStation>? = null
+
+    /**
+     * Fetches the entire list of NOAA stations from the bundled assets
+     * and maps them to our StationEntity model for saving in the database.
+     */
+    fun fetchAllStations(callback: (List<StationEntity>) -> Unit) {
+        val stations = loadStationsFromAssets()
+        val stationEntities = stations.map { tideStation ->
+            StationEntity(
+                id = tideStation.id,
+                name = tideStation.name,
+                latitude = tideStation.lat,
+                longitude = tideStation.lon,
+                type = "NOAA" // Explicitly setting the type
+            )
+        }
+        callback(stationEntities)
+    }
 
     /**
      * Fetches tide predictions for all stations within a given radius.

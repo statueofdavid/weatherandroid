@@ -6,6 +6,7 @@ import com.android.volley.Request
 import com.android.volley.toolbox.JsonObjectRequest
 import com.android.volley.toolbox.Volley
 import space.declared.weather.data.WaterLevelData
+import space.declared.weather.data.local.StationEntity
 import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
@@ -20,6 +21,49 @@ data class BoundingBox(val minLat: Double, val maxLat: Double, val minLon: Doubl
 class UsgsRemoteDataSource(context: Context) {
 
     private val requestQueue = Volley.newRequestQueue(context.applicationContext)
+
+    /**
+     * Fetches the entire list of active USGS monitoring stations and maps them to our StationEntity model.
+     * Note: This can be a very large request and may take some time.
+     */
+    fun fetchAllStations(callback: (List<StationEntity>) -> Unit) {
+        val url = "https://waterservices.usgs.gov/nwis/site/?format=json&siteStatus=active&parameterCd=00065"
+
+        val jsonObjectRequest = JsonObjectRequest(Request.Method.GET, url, null,
+            { response ->
+                try {
+                    val timeSeries = response.getJSONObject("value").getJSONArray("timeSeries")
+                    val stationEntities = mutableListOf<StationEntity>()
+                    for (i in 0 until timeSeries.length()) {
+                        val site = timeSeries.getJSONObject(i)
+                        val sourceInfo = site.getJSONObject("sourceInfo")
+                        val siteName = sourceInfo.getString("siteName")
+                        val siteCode = sourceInfo.getJSONArray("siteCode").getJSONObject(0).getString("value")
+                        val geoLocation = sourceInfo.getJSONObject("geoLocation").getJSONObject("geogLocation")
+                        val siteLat = geoLocation.getDouble("latitude")
+                        val siteLon = geoLocation.getDouble("longitude")
+
+                        stationEntities.add(
+                            StationEntity(
+                                id = siteCode,
+                                name = siteName,
+                                latitude = siteLat,
+                                longitude = siteLon,
+                                type = "USGS" // Explicitly setting the type
+                            )
+                        )
+                    }
+                    callback(stationEntities)
+                } catch (e: Exception) {
+                    callback(emptyList())
+                }
+            },
+            {
+                callback(emptyList())
+            }
+        )
+        requestQueue.add(jsonObjectRequest)
+    }
 
     /**
      * Fetches the latest water level reading for all monitoring sites within a given radius.
