@@ -145,4 +145,48 @@ class UsgsRemoteDataSource(context: Context) {
 
         return BoundingBox(minLat, maxLat, minLon, maxLon)
     }
+
+    /**
+     * NEW: Fetches the live, detailed data for a single selected USGS station.
+     */
+    fun fetchWaterLevelForStation(stationId: String, callback: OpenMeteoRemoteDataSource.ApiCallback<WaterLevelData?>) {
+        val url = "https://waterservices.usgs.gov/nwis/iv/?format=json&sites=$stationId&parameterCd=00065&siteStatus=active"
+
+        val jsonObjectRequest = JsonObjectRequest(Request.Method.GET, url, null,
+            { response ->
+                try {
+                    val timeSeries = response.getJSONObject("value").getJSONArray("timeSeries")
+                    if (timeSeries.length() > 0) {
+                        val site = timeSeries.getJSONObject(0)
+                        val sourceInfo = site.getJSONObject("sourceInfo")
+                        val siteName = sourceInfo.getString("siteName")
+                        val geoLocation = sourceInfo.getJSONObject("geoLocation").getJSONObject("geogLocation")
+                        val siteLat = geoLocation.getDouble("latitude")
+                        val siteLon = geoLocation.getDouble("longitude")
+
+                        val variable = site.getJSONObject("variable")
+                        val variableName = variable.getString("variableName")
+                        val unit = variable.getJSONObject("unit").getString("unitCode")
+
+                        val valuesArray = site.getJSONArray("values").getJSONObject(0).getJSONArray("value")
+                        if (valuesArray.length() > 0) {
+                            val value = valuesArray.getJSONObject(0).getString("value")
+                            val waterLevelData = WaterLevelData(siteName, siteLat, siteLon, variableName, value, unit)
+                            callback.onSuccess(waterLevelData)
+                        } else {
+                            callback.onSuccess(null) // No current value available
+                        }
+                    } else {
+                        callback.onSuccess(null) // No site found for this ID
+                    }
+                } catch (e: Exception) {
+                    callback.onSuccess(null) // Error parsing data
+                }
+            },
+            { error ->
+                callback.onError(error.message ?: "Unknown USGS error")
+            }
+        )
+        requestQueue.add(jsonObjectRequest)
+    }
 }

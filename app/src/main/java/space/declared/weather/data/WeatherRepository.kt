@@ -2,16 +2,20 @@ package space.declared.weather.data
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import space.declared.weather.data.local.StationEntity
 import space.declared.weather.data.local.StationLocalDataSource
 import space.declared.weather.data.source.NoaaRemoteDataSource
 import space.declared.weather.data.source.OpenMeteoRemoteDataSource
+import space.declared.weather.data.TideData
 import space.declared.weather.data.source.UsgsRemoteDataSource
+import space.declared.weather.data.WaterLevelData
 
 /**
  * The single source of truth for all app data.
- * It now uses a local database to cache station data.
+ * It now uses a local database to cache station data and fetches details on demand.
  */
 class WeatherRepository(
     private val openMeteoDataSource: OpenMeteoRemoteDataSource,
@@ -50,33 +54,58 @@ class WeatherRepository(
         openMeteoDataSource.fetchCityList(query, callback)
     }
 
-    fun getWeatherDataAndWaterLevels(
-        latitude: Double,
-        longitude: Double,
-        units: String,
-        radius: Double,
-        callback: OpenMeteoRemoteDataSource.ApiCallback<Pair<JSONObject, WaterData?>>
-    ) {
-        openMeteoDataSource.fetchWeatherData(latitude, longitude, units, object : OpenMeteoRemoteDataSource.ApiCallback<JSONObject> {
-            override fun onSuccess(weatherResult: JSONObject) {
-                // Now, get the nearby stations from our local database
-                repositoryScope.launch {
-                    val minLat = latitude - radius
-                    val maxLat = latitude + radius
-                    val minLon = longitude - radius
-                    val maxLon = longitude + radius
+    /**
+     * Fetches only the weather data from the network.
+     */
+    fun fetchWeatherData(latitude: Double, longitude: Double, units: String, callback: OpenMeteoRemoteDataSource.ApiCallback<JSONObject>) {
+        openMeteoDataSource.fetchWeatherData(latitude, longitude, units, callback)
+    }
 
-                    val nearbyNoaaStations = localDataSource.getNoaaStations(minLat, maxLat, minLon, maxLon)
-                    val nearbyUsgsStations = localDataSource.getUsgsStations(minLat, maxLat, minLon, maxLon)
+    /**
+     * Gets the list of all nearby stations from the local database.
+     */
+    suspend fun getNearbyStations(latitude: Double, longitude: Double, radius: Double): List<StationEntity> {
+        val minLat = latitude - radius
+        val maxLat = latitude + radius
+        val minLon = longitude - radius
+        val maxLon = longitude + radius
 
-                    // TODO: We will update the ViewModel and Fragment to use this new list of stations.
-                    // For now, this completes the data layer refactor.
-                }
+        // Use async to fetch both lists in parallel from the database for efficiency
+        val noaaStationsDeferred = repositoryScope.async { localDataSource.getNoaaStations(minLat, maxLat, minLon, maxLon) }
+        val usgsStationsDeferred = repositoryScope.async { localDataSource.getUsgsStations(minLat, maxLat, minLon, maxLon) }
+
+        // Wait for both queries to finish and combine their results
+        return noaaStationsDeferred.await() + usgsStationsDeferred.await()
+    }
+
+    /**
+     * Fetches the live, detailed data for a single selected station.
+     */
+    fun fetchStationDetails(station: StationEntity, callback: OpenMeteoRemoteDataSource.ApiCallback<WaterData?>) {
+        when (station.type) {
+            "NOAA" -> {
+                // For a NOAA station, fetch its tide predictions
+                noaaDataSource.fetchTidePredictionsForStation(station.id, station.name, station.latitude, station.longitude, object : OpenMeteoRemoteDataSource.ApiCallback<TideData?> {
+                    override fun onSuccess(result: TideData?) {
+                        callback.onSuccess(WaterData(tideData = if (result != null) listOf(result) else null))
+                    }
+                    override fun onError(error: String) {
+                        callback.onError(error)
+                    }
+                })
             }
-
-            override fun onError(error: String) {
-                callback.onError(error)
+            "USGS" -> {
+                // For a USGS station, fetch its water level
+                usgsDataSource.fetchWaterLevelForStation(station.id, object : OpenMeteoRemoteDataSource.ApiCallback<WaterLevelData?> {
+                    override fun onSuccess(result: WaterLevelData?) {
+                        callback.onSuccess(WaterData(waterLevel = if (result != null) listOf(result) else null))
+                    }
+                    override fun onError(error: String) {
+                        callback.onError(error)
+                    }
+                })
             }
-        })
+            else -> callback.onSuccess(null)
+        }
     }
 }

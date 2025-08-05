@@ -172,4 +172,43 @@ class NoaaRemoteDataSource(private val context: Context) {
         val lat: Double,
         @SerializedName("lng") val lon: Double
     )
+
+    /**
+     * NEW: Fetches the live, detailed predictions for a single selected NOAA station.
+     */
+    fun fetchTidePredictionsForStation(stationId: String, stationName: String, lat: Double, lon: Double, callback: OpenMeteoRemoteDataSource.ApiCallback<TideData?>) {
+        val url = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?station=$stationId&date=today&product=predictions&datum=MLLW&time_zone=lst_ldt&interval=hilo&units=english&format=json"
+        Log.d("NoaaDataSource", "Requesting URL: $url")
+        val jsonObjectRequest = JsonObjectRequest(Request.Method.GET, url, null,
+            { response ->
+                try {
+                    val predictionsArray = response.optJSONArray("predictions")
+                    if (predictionsArray == null) {
+                        callback.onSuccess(null)
+                        return@JsonObjectRequest
+                    }
+                    val predictions = mutableListOf<TidePrediction>()
+                    for (i in 0 until predictionsArray.length()) {
+                        val predictionJson = predictionsArray.getJSONObject(i)
+                        predictions.add(
+                            TidePrediction(
+                                time = predictionJson.getString("t"),
+                                type = predictionJson.getString("type"),
+                                height = predictionJson.getString("v")
+                            )
+                        )
+                    }
+                    callback.onSuccess(TideData(stationName, lat, lon, predictions))
+                } catch (e: Exception) {
+                    Log.e("NoaaDataSource", "Error parsing NOAA response", e)
+                    callback.onError("Error parsing tide predictions for station $stationId")
+                }
+            },
+            { error ->
+                Log.e("NoaaDataSource", "NOAA Request Failed: ${error.message}")
+                callback.onError(error.message ?: "Unknown error fetching predictions for station $stationId")
+            }
+        )
+        requestQueue.add(jsonObjectRequest)
+    }
 }
