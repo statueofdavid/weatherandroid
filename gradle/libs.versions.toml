@@ -4,7 +4,6 @@ agp = "8.10.1"
 appcompat = "1.7.1"
 coreKtx = "1.16.0"
 espressoCore = "3.6.1"
-kotlin = "2.0.21"
 lifecycle = "2.8.3"
 junit = "4.13.2"
 junitVersion = "1.2.1"
@@ -16,7 +15,8 @@ fragmentKtx = "1.8.1"
 gson = "2.10.1"
 preferenceKtx = "1.2.1"
 room = "2.6.1"
-ksp = "1.9.0-1.0.13"
+kotlin = "2.0.0"
+ksp = "2.0.0-1.0.21"
 
 [libraries]
 androidx-activity-ktx = { group = "androidx.activity", name = "activity-ktx", version.ref = "activityKtx" }
