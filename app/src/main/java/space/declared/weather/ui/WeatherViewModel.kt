@@ -5,11 +5,13 @@ import android.location.Location
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.preference.PreferenceManager
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
 import space.declared.weather.data.CityResult
 import space.declared.weather.data.DailyForecast
@@ -23,6 +25,8 @@ import space.declared.weather.data.source.UsgsRemoteDataSource
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
@@ -53,7 +57,7 @@ enum class SortType {
 
 data class WeatherUiState(
     val isLoading: Boolean = false,
-    val isFetchingDetails: Boolean = false, // New flag for the detail card's progress
+    val isFetchingDetails: Boolean = false,
     val error: String? = null,
     val cityName: String? = null,
     val fullForecast: List<DailyForecast> = emptyList(),
@@ -61,7 +65,7 @@ data class WeatherUiState(
     val stationListItems: List<StationListItem> = emptyList(),
     val selectedDayWeather: DetailedDayWeather? = null,
     val selectedStationDetails: WaterData? = null,
-    val stationSortType: SortType = SortType.BY_DISTANCE // Default sort
+    val stationSortType: SortType = SortType.BY_DISTANCE
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -88,7 +92,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // --- PUBLIC FUNCTIONS (Called from the UI) ---
 
     fun onCitySearch(query: String) {
-        // This function remains the same
         _uiState.update { it.copy(isLoading = true) }
         repository.getCityList(query, object : OpenMeteoRemoteDataSource.ApiCallback<List<CityResult>> {
             override fun onSuccess(result: List<CityResult>) {
@@ -106,8 +109,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         })
     }
 
+    /**
+     * Fetches all initial data for a given location.
+     * This function now runs weather and station fetches in parallel and updates the UI
+     * only after both are complete, preventing race conditions.
+     */
     fun fetchInitialData(latitude: Double, longitude: Double, name: String) {
-        // This function remains the same
         _uiState.update { it.copy(isLoading = true, error = null) }
         lastUserLocation = Location("").apply {
             this.latitude = latitude
@@ -115,43 +122,55 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
-            fetchWeather(latitude, longitude, name)
-            fetchNearbyStations(latitude, longitude)
+            try {
+                // Use async to run both fetches in parallel
+                val weatherDataDeferred = async { fetchWeatherSuspend(latitude, longitude) }
+                val stationDataDeferred = async { fetchNearbyStationsSuspend(latitude, longitude) }
+
+                // Await both results to ensure they are complete
+                val weatherResult = weatherDataDeferred.await()
+                val stationItems = stationDataDeferred.await()
+
+                // Now, update the state once with all the new data
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        cityName = name,
+                        fullForecast = weatherResult,
+                        selectedDayWeather = if (weatherResult.isNotEmpty()) createDetailedWeatherForDay(weatherResult[0], 0) else null,
+                        stationListItems = processStationList(stationItems, it.stationSortType)
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = e.message ?: "An unknown error occurred") }
+            }
         }
     }
 
     fun onStationSelected(stationItem: StationListItem) {
-        // When a station is selected, show the detail card's progress bar immediately
         _uiState.update { it.copy(isFetchingDetails = true, selectedStationDetails = null) }
 
         repository.fetchStationDetails(stationItem.entity, object: OpenMeteoRemoteDataSource.ApiCallback<WaterData?>{
             override fun onSuccess(result: WaterData?) {
-                // When data arrives, update the details and hide the progress bar
                 _uiState.update { it.copy(selectedStationDetails = result, isFetchingDetails = false) }
             }
             override fun onError(error: String) {
-                // On error, hide the progress bar and show an error message
                 _uiState.update { it.copy(error = error, isFetchingDetails = false) }
             }
         })
     }
 
-    /**
-     * Called when the user closes the detail card.
-     */
     fun onDetailCardClosed() {
         _uiState.update { it.copy(selectedStationDetails = null, isFetchingDetails = false) }
     }
 
     fun refreshDataForCurrentLocation() {
-        // This function remains the same
         if (lastUserLocation != null && _uiState.value.cityName != null) {
             fetchInitialData(lastUserLocation!!.latitude, lastUserLocation!!.longitude, _uiState.value.cityName!!)
         }
     }
 
     fun onDaySelected(index: Int) {
-        // This function remains the same
         val fullForecast = _uiState.value.fullForecast
         if (index >= fullForecast.size) return
         val selectedDay = fullForecast[index]
@@ -186,58 +205,54 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // --- PRIVATE HELPER FUNCTIONS ---
 
-    private fun fetchWeather(latitude: Double, longitude: Double, name: String) {
-        val units = sharedPreferences.getString("units", "metric") ?: "metric"
-        repository.fetchWeatherData(latitude, longitude, units, object : OpenMeteoRemoteDataSource.ApiCallback<JSONObject> {
-            override fun onSuccess(result: JSONObject) {
-                lastFullResponse = result
-                val forecast = parseFullForecast(result.getJSONObject("daily"))
-                _uiState.update {
-                    it.copy(
-                        cityName = name,
-                        fullForecast = forecast,
-                        selectedDayWeather = if (forecast.isNotEmpty()) createDetailedWeatherForDay(forecast[0], 0) else null
-                    )
+    /**
+     * A suspend function that wraps the callback-based weather fetch.
+     */
+    private suspend fun fetchWeatherSuspend(latitude: Double, longitude: Double): List<DailyForecast> {
+        return suspendCancellableCoroutine { continuation ->
+            val units = sharedPreferences.getString("units", "metric") ?: "metric"
+            repository.fetchWeatherData(latitude, longitude, units, object : OpenMeteoRemoteDataSource.ApiCallback<JSONObject> {
+                override fun onSuccess(result: JSONObject) {
+                    lastFullResponse = result // Set this for use in createDetailedWeatherForDay
+                    val forecast = parseFullForecast(result.getJSONObject("daily"))
+                    if (continuation.isActive) continuation.resume(forecast)
                 }
-            }
-            override fun onError(error: String) {
-                _uiState.update { it.copy(error = error) }
-            }
-        })
+
+                override fun onError(error: String) {
+                    if (continuation.isActive) continuation.resumeWithException(Exception(error))
+                }
+            })
+        }
     }
 
-    private fun fetchNearbyStations(latitude: Double, longitude: Double) {
-        val radius = sharedPreferences.getString("radius", "1.0")?.toDoubleOrNull() ?: 1.0
-        viewModelScope.launch {
-            val stations = repository.getNearbyStations(latitude, longitude, radius)
-            val stationItems = stations.map { entity ->
-                val stationLocation = Location("").apply {
-                    this.latitude = entity.latitude
-                    this.longitude = entity.longitude
-                }
-                val distance = lastUserLocation?.distanceTo(stationLocation)?.times(0.000621371f) ?: 0f // meters to miles
-                StationListItem(entity, distance)
+    /**
+     * A suspend function that fetches and processes the nearby station list.
+     */
+    private suspend fun fetchNearbyStationsSuspend(latitude: Double, longitude: Double): List<StationListItem> {
+        val radiusInMiles = sharedPreferences.getString("radius", "1.0")?.toDoubleOrNull() ?: 1.0
+        val radiusInDegrees = radiusInMiles / 69.0
+
+        val stations = repository.getNearbyStations(latitude, longitude, radiusInDegrees)
+        val stationItems = stations.map { entity ->
+            val stationLocation = Location("").apply {
+                this.latitude = entity.latitude
+                this.longitude = entity.longitude
             }
-            originalStationList = stationItems
-            _uiState.update {
-                it.copy(
-                    isLoading = false, // Set loading to false after all data is fetched
-                    stationListItems = processStationList(stationItems, it.stationSortType)
-                )
-            }
+            val distance = lastUserLocation?.distanceTo(stationLocation)?.times(0.000621371f) ?: 0f
+            StationListItem(entity, distance)
         }
+        originalStationList = stationItems // Update the original list for sorting
+        return stationItems
     }
 
     private fun processStationList(list: List<StationListItem>, sortType: SortType): List<StationListItem> {
         return when (sortType) {
-            // Correctly sort by the stationName property of the entity
             SortType.BY_NAME -> list.sortedBy { it.entity.name }
             SortType.BY_DISTANCE -> list.sortedBy { it.distance }
             SortType.NONE -> list
         }
     }
 
-    // ... (All other helper functions remain the same)
     private fun createDetailedWeatherForDay(day: DailyForecast, index: Int): DetailedDayWeather {
         val units = sharedPreferences.getString("units", "metric") ?: "metric"
         val windUnit = if (units == "imperial") "mph" else "km/h"

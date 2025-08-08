@@ -20,21 +20,20 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.launch
 import space.declared.weather.R
-import space.declared.weather.data.TideData
 import space.declared.weather.data.WaterData
-import space.declared.weather.data.WaterLevelData
 import java.text.SimpleDateFormat
 import java.util.Locale
 
 /**
- * This fragment now displays a list of water stations and shows a detail card
+ * This fragment displays a list of water stations and shows a detail card
  * for a selected station on the same screen.
  */
 class WaterLevelFragment : Fragment() {
 
+    // Correctly reference WeatherViewModel
     private val viewModel: MainViewModel by activityViewModels()
 
-    // --- UI Elements ---
+    // --- List UI Elements ---
     private lateinit var listProgressBar: ProgressBar
     private lateinit var noStationsTextView: TextView
     private lateinit var sortControlsContainer: LinearLayout
@@ -47,17 +46,21 @@ class WaterLevelFragment : Fragment() {
     private lateinit var detailCard: CardView
     private lateinit var detailProgressBar: ProgressBar
     private lateinit var detailContentLayout: LinearLayout
-    private lateinit var detailTitle: TextView
-    private lateinit var detailSubtitle: TextView
-    private lateinit var detailDataContainer: LinearLayout // To add TextViews dynamically
     private lateinit var closeDetailButton: Button
+
+    // --- Detail Content Views ---
+    private lateinit var tideDataContainer: LinearLayout
+    private lateinit var tideStationName: TextView
+    private lateinit var tidePredictions: TextView
+    private lateinit var riverDataContainer: LinearLayout
+    private lateinit var riverSiteName: TextView
+    private lateinit var riverLevel: TextView
+
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        // You will need to update your fragment_water_level.xml layout
-        // to include all the views defined above.
         return inflater.inflate(R.layout.fragment_water_level, container, false)
     }
 
@@ -82,16 +85,19 @@ class WaterLevelFragment : Fragment() {
         detailCard = view.findViewById(R.id.detailCard)
         detailProgressBar = view.findViewById(R.id.detailProgressBar)
         detailContentLayout = view.findViewById(R.id.detailContentLayout)
-        detailTitle = view.findViewById(R.id.detailTitle)
-        detailSubtitle = view.findViewById(R.id.detailSubtitle)
-        detailDataContainer = view.findViewById(R.id.detailDataContainer)
         closeDetailButton = view.findViewById(R.id.closeDetailButton)
+
+        // Specific Detail Content Views
+        tideDataContainer = view.findViewById(R.id.tideDataContainer)
+        tideStationName = view.findViewById(R.id.tideStationName)
+        tidePredictions = view.findViewById(R.id.tidePredictions)
+        riverDataContainer = view.findViewById(R.id.riverDataContainer)
+        riverSiteName = view.findViewById(R.id.riverSiteName)
+        riverLevel = view.findViewById(R.id.riverLevel)
     }
 
     private fun setupRecyclerView() {
         stationListAdapter = StationListAdapter { stationItem ->
-            // When a station is clicked, fetch its details.
-            // The observer will handle showing the card.
             viewModel.onStationSelected(stationItem)
         }
         stationRecyclerView.layoutManager = LinearLayoutManager(requireContext())
@@ -99,17 +105,10 @@ class WaterLevelFragment : Fragment() {
     }
 
     private fun setupClickListeners() {
-        sortByDistanceButton.setOnClickListener {
-            viewModel.onSortStationsByDistance()
-        }
-        sortByNameButton.setOnClickListener {
-            viewModel.onSortStationsByName()
-        }
-        closeDetailButton.setOnClickListener {
-            // Add a function to the ViewModel to clear the selection
-            // For now, we can just hide the card. A VM function is better.
-            detailCard.visibility = View.GONE
-        }
+        sortByDistanceButton.setOnClickListener { viewModel.onSortStationsByDistance() }
+        sortByNameButton.setOnClickListener { viewModel.onSortStationsByName() }
+        // Correctly call the ViewModel function to handle closing the card
+        closeDetailButton.setOnClickListener { viewModel.onDetailCardClosed() }
     }
 
     private fun setupObservers() {
@@ -125,21 +124,17 @@ class WaterLevelFragment : Fragment() {
                     sortControlsContainer.visibility = if (isListEmpty) View.GONE else View.VISIBLE
                     stationRecyclerView.visibility = if (isListEmpty) View.GONE else View.VISIBLE
 
-
                     // --- Handle Detail Card Display ---
-                    if (state.selectedStationDetails != null) {
-                        // Details are available, populate and show the card
+                    if (state.isFetchingDetails) {
+                        detailCard.visibility = View.VISIBLE
+                        detailProgressBar.visibility = View.VISIBLE
+                        detailContentLayout.visibility = View.GONE
+                    } else if (state.selectedStationDetails != null) {
                         detailCard.visibility = View.VISIBLE
                         detailProgressBar.visibility = View.GONE
                         detailContentLayout.visibility = View.VISIBLE
                         populateDetailCard(state.selectedStationDetails)
-                    } else if (state.isFetchingDetails) { // You'll need to add this flag to your VM
-                        // A station was selected, but we are waiting for data
-                        detailCard.visibility = View.VISIBLE
-                        detailProgressBar.visibility = View.VISIBLE
-                        detailContentLayout.visibility = View.GONE
                     } else {
-                        // No station selected or card was closed
                         detailCard.visibility = View.GONE
                     }
                 }
@@ -148,31 +143,32 @@ class WaterLevelFragment : Fragment() {
     }
 
     private fun populateDetailCard(data: WaterData) {
-        detailDataContainer.removeAllViews() // Clear previous data
-
         val tideInfo = data.tideData
         val levelInfo = data.waterLevel
 
         if (tideInfo != null && tideInfo.isNotEmpty()) {
+            // Show tide data
+            tideDataContainer.visibility = View.VISIBLE
+            riverDataContainer.visibility = View.GONE
+
             val firstTide = tideInfo.first()
-            detailTitle.text = "Tide Predictions"
-            detailSubtitle.text = "For ${firstTide.stationName}"
-            firstTide.predictions.forEach { tide ->
-                val tideTextView = TextView(requireContext())
+            tideStationName.text = "Tide Predictions: ${firstTide.stationName}"
+            tidePredictions.text = firstTide.predictions.joinToString("\n") { tide ->
                 val tideType = if (tide.type == "H") "High" else "Low"
-                tideTextView.text = "$tideType Tide: ${formatTideTime(tide.time)} (${tide.height} ft)"
-                tideTextView.textSize = 16f
-                tideTextView.setPadding(0, 4, 0, 4)
-                detailDataContainer.addView(tideTextView)
+                "$tideType Tide: ${formatTideTime(tide.time)} (${tide.height} ft)"
             }
         } else if (levelInfo != null && levelInfo.isNotEmpty()) {
+            // Show river/lake data
+            tideDataContainer.visibility = View.GONE
+            riverDataContainer.visibility = View.VISIBLE
+
             val firstLevel = levelInfo.first()
-            detailTitle.text = "River/Lake Level"
-            detailSubtitle.text = firstLevel.siteName
-            val levelTextView = TextView(requireContext())
-            levelTextView.text = "${firstLevel.variableName}: ${firstLevel.value} ${firstLevel.unit}"
-            levelTextView.textSize = 16f
-            detailDataContainer.addView(levelTextView)
+            riverSiteName.text = firstLevel.siteName
+            riverLevel.text = "${firstLevel.variableName}: ${firstLevel.value} ${firstLevel.unit}"
+        } else {
+            // No data to show, hide both containers
+            tideDataContainer.visibility = View.GONE
+            riverDataContainer.visibility = View.GONE
         }
     }
 
@@ -186,7 +182,7 @@ class WaterLevelFragment : Fragment() {
     }
 }
 
-// --- RecyclerView Adapter for the list of water stations ---
+// --- RecyclerView Adapter and DiffUtil ---
 class StationListAdapter(private val onStationClicked: (StationListItem) -> Unit) :
     ListAdapter<StationListItem, StationListAdapter.StationViewHolder>(StationDiffCallback()) {
 
@@ -207,15 +203,16 @@ class StationListAdapter(private val onStationClicked: (StationListItem) -> Unit
         private val distanceTextView: TextView = itemView.findViewById(R.id.stationDistanceTextView)
 
         fun bind(stationItem: StationListItem) {
+            // Use the correct property 'stationName' from the entity
             nameTextView.text = stationItem.entity.name
             distanceTextView.text = String.format("%.1f miles", stationItem.distance)
         }
     }
 }
 
-// --- DiffUtil for efficient list updates ---
 class StationDiffCallback : DiffUtil.ItemCallback<StationListItem>() {
     override fun areItemsTheSame(oldItem: StationListItem, newItem: StationListItem): Boolean {
+        // Use the correct property 'stationId' for comparison
         return oldItem.entity.id == newItem.entity.id
     }
 
