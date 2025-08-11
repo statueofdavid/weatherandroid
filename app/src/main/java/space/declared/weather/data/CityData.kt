@@ -1,10 +1,12 @@
 package space.declared.weather.data
 
+import androidx.annotation.Keep
 import org.json.JSONObject
 
 /**
  * Represents the data for a single city returned from the geocoding API.
  */
+@Keep
 data class CityResult(
     val name: String,
     val state: String?,

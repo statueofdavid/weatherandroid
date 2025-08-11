@@ -1,5 +1,6 @@
 package space.declared.weather.data.local
 
+import androidx.annotation.Keep
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -10,10 +11,14 @@ import androidx.room.Query
  * Defines the database interactions.
  */
 @Dao
+@Keep
 interface StationDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(stations: List<StationEntity>)
+
+    @Query("DELETE FROM stations")
+    suspend fun clearAllStations()
 
     @Query("DELETE FROM stations WHERE type = :stationType")
     suspend fun clearStationsByType(stationType: String)

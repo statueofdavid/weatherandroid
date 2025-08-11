@@ -58,6 +58,7 @@ enum class SortType {
 data class WeatherUiState(
     val isLoading: Boolean = false,
     val isFetchingDetails: Boolean = false,
+    val isSyncing: Boolean = false, // New property to track background sync
     val error: String? = null,
     val cityName: String? = null,
     val fullForecast: List<DailyForecast> = emptyList(),
@@ -86,10 +87,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val openMeteoDataSource = OpenMeteoRemoteDataSource(application)
         val noaaDataSource = NoaaRemoteDataSource(application)
         val usgsDataSource = UsgsRemoteDataSource(application)
-        repository = WeatherRepository(openMeteoDataSource, noaaDataSource, usgsDataSource, localDataSource)
+        // Pass the application context to the repository for SharedPreferences
+        repository = WeatherRepository(application, openMeteoDataSource, noaaDataSource, usgsDataSource, localDataSource)
+
+        // NEW: Launch a coroutine to observe the sync status from the repository.
+        // This will keep the UI state in sync with the repository's background work.
+        viewModelScope.launch {
+            repository.isSyncing.collect { syncingStatus ->
+                _uiState.update { it.copy(isSyncing = syncingStatus) }
+            }
+        }
     }
 
     // --- PUBLIC FUNCTIONS (Called from the UI) ---
+
+    fun triggerStationSync() {
+        repository.triggerStationSync()
+    }
 
     fun onCitySearch(query: String) {
         _uiState.update { it.copy(isLoading = true) }
@@ -109,11 +123,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         })
     }
 
-    /**
-     * Fetches all initial data for a given location.
-     * This function now runs weather and station fetches in parallel and updates the UI
-     * only after both are complete, preventing race conditions.
-     */
     fun fetchInitialData(latitude: Double, longitude: Double, name: String) {
         _uiState.update { it.copy(isLoading = true, error = null) }
         lastUserLocation = Location("").apply {
@@ -123,15 +132,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             try {
-                // Use async to run both fetches in parallel
                 val weatherDataDeferred = async { fetchWeatherSuspend(latitude, longitude) }
                 val stationDataDeferred = async { fetchNearbyStationsSuspend(latitude, longitude) }
 
-                // Await both results to ensure they are complete
                 val weatherResult = weatherDataDeferred.await()
                 val stationItems = stationDataDeferred.await()
 
-                // Now, update the state once with all the new data
                 _uiState.update {
                     it.copy(
                         isLoading = false,
@@ -205,15 +211,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // --- PRIVATE HELPER FUNCTIONS ---
 
-    /**
-     * A suspend function that wraps the callback-based weather fetch.
-     */
     private suspend fun fetchWeatherSuspend(latitude: Double, longitude: Double): List<DailyForecast> {
         return suspendCancellableCoroutine { continuation ->
             val units = sharedPreferences.getString("units", "metric") ?: "metric"
             repository.fetchWeatherData(latitude, longitude, units, object : OpenMeteoRemoteDataSource.ApiCallback<JSONObject> {
                 override fun onSuccess(result: JSONObject) {
-                    lastFullResponse = result // Set this for use in createDetailedWeatherForDay
+                    lastFullResponse = result
                     val forecast = parseFullForecast(result.getJSONObject("daily"))
                     if (continuation.isActive) continuation.resume(forecast)
                 }
@@ -225,9 +228,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /**
-     * A suspend function that fetches and processes the nearby station list.
-     */
     private suspend fun fetchNearbyStationsSuspend(latitude: Double, longitude: Double): List<StationListItem> {
         val radiusInMiles = sharedPreferences.getString("radius", "1.0")?.toDoubleOrNull() ?: 1.0
         val radiusInDegrees = radiusInMiles / 69.0
@@ -241,7 +241,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val distance = lastUserLocation?.distanceTo(stationLocation)?.times(0.000621371f) ?: 0f
             StationListItem(entity, distance)
         }
-        originalStationList = stationItems // Update the original list for sorting
+        originalStationList = stationItems
         return stationItems
     }
 

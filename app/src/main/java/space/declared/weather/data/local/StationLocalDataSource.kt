@@ -18,11 +18,12 @@ class StationLocalDataSource(private val stationDao: StationDao) {
     }
 
     /**
-     * Inserts a list of stations into the database, replacing any old ones.
+     * NEW FUNCTION: Clears all existing station data and inserts a fresh list.
+     * This is used for the periodic background sync.
      */
-    suspend fun saveStations(stations: List<StationEntity>, stationType: String) {
+    suspend fun clearAndSaveStations(stations: List<StationEntity>) {
         withContext(Dispatchers.IO) {
-            stationDao.clearStationsByType(stationType)
+            stationDao.clearAllStations()
             stationDao.insertAll(stations)
         }
     }
