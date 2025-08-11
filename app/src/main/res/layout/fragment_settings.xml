@@ -1,6 +1,151 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- This layout is a simple container that allows us to apply a background to the settings fragment -->
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/settings_container"
+<!--
+  This layout uses a standard LinearLayout to give you full control over the
+  appearance of your settings screen.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent" />
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    tools:context=".ui.SettingsFragment">
+
+    <!-- Data Sync Category -->
+    <TextView
+        style="@style/TextAppearance.MaterialComponents.Headline6"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Data Sync"
+        android:textColor="?attr/colorPrimary" />
+
+    <!-- Sync Status Indicator (hidden by default) -->
+    <LinearLayout
+        android:id="@+id/syncStatusContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <ProgressBar
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:text="Syncing latest station data..."
+            android:textAppearance="?android:attr/textAppearanceListItemSecondary" />
+    </LinearLayout>
+
+    <!-- NEW: Manual Sync Button -->
+    <Button
+        android:id="@+id/syncNowButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Sync Now" />
+
+
+    <!-- General Settings Category -->
+    <TextView
+        style="@style/TextAppearance.MaterialComponents.Headline6"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="General Settings"
+        android:textColor="?attr/colorPrimary" />
+
+    <!-- Unit System Setting -->
+    <LinearLayout
+        android:id="@+id/unitsSetting"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:orientation="vertical"
+        android:padding="8dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Unit System"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/unitsSummary"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="?android:attr/textAppearanceListItemSecondary"
+            tools:text="Metric (°C, km/h)" />
+    </LinearLayout>
+
+    <!-- Search Radius Setting -->
+    <LinearLayout
+        android:id="@+id/radiusSetting"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:orientation="vertical"
+        android:padding="8dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Water Data Search Radius"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/radiusSummary"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="?android:attr/textAppearanceListItemSecondary"
+            tools:text="10 miles" />
+    </LinearLayout>
+
+    <!-- Appearance Category -->
+    <TextView
+        style="@style/TextAppearance.MaterialComponents.Headline6"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="Appearance"
+        android:textColor="?attr/colorPrimary" />
+
+    <!-- Dark Mode Setting -->
+    <LinearLayout
+        android:id="@+id/darkModeSetting"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:orientation="vertical"
+        android:padding="8dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Dark Mode"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/darkModeSummary"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="?android:attr/textAppearanceListItemSecondary"
+            tools:text="System Default" />
+    </LinearLayout>
+
+</LinearLayout>

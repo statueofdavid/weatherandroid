@@ -2,29 +2,40 @@ package space.declared.weather.ui
 
 import android.app.Application
 import android.location.Location
-import android.util.Log
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.viewModelScope
 import androidx.preference.PreferenceManager
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
 import space.declared.weather.data.CityResult
 import space.declared.weather.data.DailyForecast
 import space.declared.weather.data.WaterData
 import space.declared.weather.data.WeatherRepository
+import space.declared.weather.data.local.AppDatabase
+import space.declared.weather.data.local.StationLocalDataSource
 import space.declared.weather.data.source.NoaaRemoteDataSource
 import space.declared.weather.data.source.OpenMeteoRemoteDataSource
 import space.declared.weather.data.source.UsgsRemoteDataSource
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
+// --- DATA CLASSES FOR UI STATE ---
+
 data class DetailedDayWeather(
     val date: String,
-    val tempMax: String, // Changed to String to include unit
-    val tempMin: String, // Changed to String to include unit
+    val tempMax: String,
+    val tempMin: String,
     val weatherDescription: String,
     val uvIndex: String,
     val sunrise: String,
@@ -38,9 +49,24 @@ data class DetailedDayWeather(
     val windGusts: String?
 )
 
-data class MainScreenState(
-    val cityName: String,
-    val fullForecast: List<DailyForecast>
+enum class SortType {
+    NONE,
+    BY_NAME,
+    BY_DISTANCE
+}
+
+data class WeatherUiState(
+    val isLoading: Boolean = false,
+    val isFetchingDetails: Boolean = false,
+    val isSyncing: Boolean = false, // New property to track background sync
+    val error: String? = null,
+    val cityName: String? = null,
+    val fullForecast: List<DailyForecast> = emptyList(),
+    val cityList: List<CityResult> = emptyList(),
+    val stationListItems: List<StationListItem> = emptyList(),
+    val selectedDayWeather: DetailedDayWeather? = null,
+    val selectedStationDetails: WaterData? = null,
+    val stationSortType: SortType = SortType.BY_DISTANCE
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -48,188 +74,183 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: WeatherRepository
     private val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(application)
 
-    private val _cityList = MutableLiveData<List<CityResult>>()
-    val cityList: LiveData<List<CityResult>> = _cityList
-
-    private val _mainScreenState = MutableLiveData<MainScreenState>()
-    val mainScreenState: LiveData<MainScreenState> = _mainScreenState
-
-    private val _selectedDayWeather = MutableLiveData<DetailedDayWeather>()
-    val selectedDayWeather: LiveData<DetailedDayWeather> = _selectedDayWeather
-
-    private val _waterData = MutableLiveData<WaterData?>()
-    val waterData: LiveData<WaterData?> = _waterData
-
-    private val _isLoading = MutableLiveData<Boolean>()
-    val isLoading: LiveData<Boolean> = _isLoading
-
-    private val _error = MutableLiveData<String>()
-    val error: LiveData<String> = _error
-
-    private val _showCitySearchCard = MutableLiveData<Boolean>()
-    val showCitySearchCard: LiveData<Boolean> = _showCitySearchCard
+    private val _uiState = MutableStateFlow(WeatherUiState())
+    val uiState: StateFlow<WeatherUiState> = _uiState.asStateFlow()
 
     private var lastFullResponse: JSONObject? = null
     private var lastUserLocation: Location? = null
-    private var lastCityName: String? = null
+    private var originalStationList: List<StationListItem> = emptyList()
 
     init {
+        val database = AppDatabase.getDatabase(application)
+        val localDataSource = StationLocalDataSource(database.stationDao())
         val openMeteoDataSource = OpenMeteoRemoteDataSource(application)
         val noaaDataSource = NoaaRemoteDataSource(application)
         val usgsDataSource = UsgsRemoteDataSource(application)
+        // Pass the application context to the repository for SharedPreferences
+        repository = WeatherRepository(application, openMeteoDataSource, noaaDataSource, usgsDataSource, localDataSource)
 
-        _showCitySearchCard.value = false
-        repository = WeatherRepository(openMeteoDataSource, noaaDataSource, usgsDataSource)
+        // NEW: Launch a coroutine to observe the sync status from the repository.
+        // This will keep the UI state in sync with the repository's background work.
+        viewModelScope.launch {
+            repository.isSyncing.collect { syncingStatus ->
+                _uiState.update { it.copy(isSyncing = syncingStatus) }
+            }
+        }
+    }
+
+    // --- PUBLIC FUNCTIONS (Called from the UI) ---
+
+    fun triggerStationSync() {
+        repository.triggerStationSync()
     }
 
     fun onCitySearch(query: String) {
-        if (query.length > 2) {
-            _isLoading.value = true
-            _showCitySearchCard.value = true // Show card when search starts
-            repository.getCityList(query, object : OpenMeteoRemoteDataSource.ApiCallback<List<CityResult>> {
-                override fun onSuccess(result: List<CityResult>) {
-                    _cityList.value = result // Always update cityList
-                    _isLoading.value = false
-
-                    // If results are empty, hide the card
-                    if (result.isEmpty()) {
-                        _error.value = "City not found"
-                        _showCitySearchCard.value = false
-                    }
+        _uiState.update { it.copy(isLoading = true) }
+        repository.getCityList(query, object : OpenMeteoRemoteDataSource.ApiCallback<List<CityResult>> {
+            override fun onSuccess(result: List<CityResult>) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        cityList = result,
+                        error = if (result.isEmpty()) "City not found" else null
+                    )
                 }
-                override fun onError(error: String) {
-                    _error.value = error
-                    _isLoading.value = false
-                    _showCitySearchCard.value = false // Hide on error
-                    _cityList.value = emptyList() // Clear list on error
-                }
-            })
-        } else {
-            // Query is too short (or empty)
-            clearSearchAndHideCard()
-        }
-    }
-
-    fun fetchWeatherAndWaterData(latitude: Double, longitude: Double, name: String) {
-        _isLoading.value = true
-        lastUserLocation = Location("").apply {
-            this.latitude = latitude
-            this.longitude = longitude
-        }
-        lastCityName = name
-
-        val units = sharedPreferences.getString("units", "metric") ?: "metric"
-        val radius = sharedPreferences.getString("radius", "1.0")?.toDoubleOrNull() ?: 1.0
-
-        repository.getWeatherDataAndWaterLevels(latitude, longitude, units, radius, object : OpenMeteoRemoteDataSource.ApiCallback<Pair<JSONObject, WaterData?>> {
-            override fun onSuccess(result: Pair<JSONObject, WaterData?>) {
-                Log.i("MainViewModel", "SUCCESS: Weather data received for $name.")
-                val weatherJson = result.first
-                val waterDataResult = result.second
-
-                // Log.d("MainViewModel", "RAW_JSON_RESPONSE: ${weatherJson.toString(2)}")
-                Log.d("MainViewModel", "DATA_CHECK - Tide Stations: ${waterDataResult?.tideData?.size ?: 0}, River/Lake Stations: ${waterDataResult?.waterLevel?.size ?: 0}")
-
-                lastFullResponse = weatherJson
-                val forecast = parseFullForecast(weatherJson.getJSONObject("daily"))
-                Log.d("MainViewModel", "the forecast is parsed: $forecast")
-                _mainScreenState.value = MainScreenState(name, forecast)
-
-                val sortedWaterData = sortWaterDataByDistance(waterDataResult)
-                _waterData.value = sortedWaterData
-
-                if (forecast.isNotEmpty()) {
-                    val todayWeather = createDetailedWeatherForDay(forecast[0], 0)
-                    _selectedDayWeather.value = todayWeather
-                }
-
-                Log.i("MainViewModel", "COMPLETED: Setting isLoading=false for $name.")
-                _isLoading.value = false
             }
             override fun onError(error: String) {
-                Log.e("MainViewModel", "ERROR: $error. Setting isLoading=false.")
-                _error.value = error
-                _isLoading.value = false
+                _uiState.update { it.copy(isLoading = false, error = error) }
             }
         })
     }
 
-    /**
-     * Re-fetches the data for the last known location. Called when settings change.
-     */
-    fun refreshDataForCurrentLocation() {
-        if (lastUserLocation != null && lastCityName != null) {
-            fetchWeatherAndWaterData(lastUserLocation!!.latitude, lastUserLocation!!.longitude, lastCityName!!)
+    fun fetchInitialData(latitude: Double, longitude: Double, name: String) {
+        _uiState.update { it.copy(isLoading = true, error = null) }
+        lastUserLocation = Location("").apply {
+            this.latitude = latitude
+            this.longitude = longitude
+        }
+
+        viewModelScope.launch {
+            try {
+                val weatherDataDeferred = async { fetchWeatherSuspend(latitude, longitude) }
+                val stationDataDeferred = async { fetchNearbyStationsSuspend(latitude, longitude) }
+
+                val weatherResult = weatherDataDeferred.await()
+                val stationItems = stationDataDeferred.await()
+
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        cityName = name,
+                        fullForecast = weatherResult,
+                        selectedDayWeather = if (weatherResult.isNotEmpty()) createDetailedWeatherForDay(weatherResult[0], 0) else null,
+                        stationListItems = processStationList(stationItems, it.stationSortType)
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = e.message ?: "An unknown error occurred") }
+            }
         }
     }
 
-    fun setLoading(loading: Boolean) {
-        _isLoading.value = loading
-        // You could also add logging or other logic here if needed,
-        // which is the benefit of letting the ViewModel control its state.
-        Log.d("WeatherViewModel::setLoading", "setLoading: ViewModel's isLoading set to $loading")
+    fun onStationSelected(stationItem: StationListItem) {
+        _uiState.update { it.copy(isFetchingDetails = true, selectedStationDetails = null) }
+
+        repository.fetchStationDetails(stationItem.entity, object: OpenMeteoRemoteDataSource.ApiCallback<WaterData?>{
+            override fun onSuccess(result: WaterData?) {
+                _uiState.update { it.copy(selectedStationDetails = result, isFetchingDetails = false) }
+            }
+            override fun onError(error: String) {
+                _uiState.update { it.copy(error = error, isFetchingDetails = false) }
+            }
+        })
+    }
+
+    fun onDetailCardClosed() {
+        _uiState.update { it.copy(selectedStationDetails = null, isFetchingDetails = false) }
+    }
+
+    fun refreshDataForCurrentLocation() {
+        if (lastUserLocation != null && _uiState.value.cityName != null) {
+            fetchInitialData(lastUserLocation!!.latitude, lastUserLocation!!.longitude, _uiState.value.cityName!!)
+        }
     }
 
     fun onDaySelected(index: Int) {
-        Log.i("MainViewModel", "CALL: onDaySelected(index: $index).")
-        val fullForecast = _mainScreenState.value?.fullForecast ?: return
+        val fullForecast = _uiState.value.fullForecast
         if (index >= fullForecast.size) return
-
         val selectedDay = fullForecast[index]
-        val detailedWeather = createDetailedWeatherForDay(selectedDay, index)
-        _selectedDayWeather.value = detailedWeather
+        _uiState.update {
+            it.copy(selectedDayWeather = createDetailedWeatherForDay(selectedDay, index))
+        }
+    }
+
+    fun onSortStationsByName() {
+        _uiState.update { currentState ->
+            val newSortType = if (currentState.stationSortType == SortType.BY_NAME) SortType.NONE else SortType.BY_NAME
+            currentState.copy(
+                stationSortType = newSortType,
+                stationListItems = processStationList(originalStationList, newSortType)
+            )
+        }
+    }
+
+    fun onSortStationsByDistance() {
+        _uiState.update { currentState ->
+            val newSortType = if (currentState.stationSortType == SortType.BY_DISTANCE) SortType.NONE else SortType.BY_DISTANCE
+            currentState.copy(
+                stationSortType = newSortType,
+                stationListItems = processStationList(originalStationList, newSortType)
+            )
+        }
     }
 
     fun onCitySelectionDialogShown() {
-        _cityList.value = emptyList()
-        _showCitySearchCard.value = false
+        _uiState.update { it.copy(cityList = emptyList()) }
     }
 
-    fun hideCitySearchCard() {
-        _showCitySearchCard.value = false
-    }
+    // --- PRIVATE HELPER FUNCTIONS ---
 
-    fun clearSearchAndHideCard() {
-        _cityList.value = emptyList()
-        _showCitySearchCard.value = false
-    }
+    private suspend fun fetchWeatherSuspend(latitude: Double, longitude: Double): List<DailyForecast> {
+        return suspendCancellableCoroutine { continuation ->
+            val units = sharedPreferences.getString("units", "metric") ?: "metric"
+            repository.fetchWeatherData(latitude, longitude, units, object : OpenMeteoRemoteDataSource.ApiCallback<JSONObject> {
+                override fun onSuccess(result: JSONObject) {
+                    lastFullResponse = result
+                    val forecast = parseFullForecast(result.getJSONObject("daily"))
+                    if (continuation.isActive) continuation.resume(forecast)
+                }
 
-    fun onCitySelectionDone() {
-        _cityList.value = emptyList() // Clear the list
-        _showCitySearchCard.value = false // Hide the card
-    }
-
-    fun onSortByDistanceClicked() {
-        _waterData.value = sortWaterDataByDistance(_waterData.value)
-    }
-
-    fun onSortByNameClicked() {
-        val currentData = _waterData.value
-        val sortedTides = currentData?.tideData?.sortedBy { it.stationName }
-        val sortedRivers = currentData?.waterLevel?.sortedBy { it.siteName }
-        _waterData.value = WaterData(sortedTides, sortedRivers)
-    }
-
-    private fun sortWaterDataByDistance(waterData: WaterData?): WaterData? {
-        val userLocation = lastUserLocation ?: return waterData
-
-        val sortedTides = waterData?.tideData?.sortedBy {
-            val stationLocation = Location("").apply {
-                latitude = it.latitude
-                longitude = it.longitude
-            }
-            userLocation.distanceTo(stationLocation)
+                override fun onError(error: String) {
+                    if (continuation.isActive) continuation.resumeWithException(Exception(error))
+                }
+            })
         }
+    }
 
-        val sortedRivers = waterData?.waterLevel?.sortedBy {
+    private suspend fun fetchNearbyStationsSuspend(latitude: Double, longitude: Double): List<StationListItem> {
+        val radiusInMiles = sharedPreferences.getString("radius", "1.0")?.toDoubleOrNull() ?: 1.0
+        val radiusInDegrees = radiusInMiles / 69.0
+
+        val stations = repository.getNearbyStations(latitude, longitude, radiusInDegrees)
+        val stationItems = stations.map { entity ->
             val stationLocation = Location("").apply {
-                latitude = it.latitude
-                longitude = it.longitude
+                this.latitude = entity.latitude
+                this.longitude = entity.longitude
             }
-            userLocation.distanceTo(stationLocation)
+            val distance = lastUserLocation?.distanceTo(stationLocation)?.times(0.000621371f) ?: 0f
+            StationListItem(entity, distance)
         }
+        originalStationList = stationItems
+        return stationItems
+    }
 
-        return WaterData(sortedTides, sortedRivers)
+    private fun processStationList(list: List<StationListItem>, sortType: SortType): List<StationListItem> {
+        return when (sortType) {
+            SortType.BY_NAME -> list.sortedBy { it.entity.name }
+            SortType.BY_DISTANCE -> list.sortedBy { it.distance }
+            SortType.NONE -> list
+        }
     }
 
     private fun createDetailedWeatherForDay(day: DailyForecast, index: Int): DetailedDayWeather {
@@ -309,7 +330,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return forecastList
     }
 
-    // --- HELPER FUNCTIONS ---
     private fun formatTime(dateTimeString: String): String {
         return try {
             val inputFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm", Locale.getDefault())

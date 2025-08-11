@@ -8,7 +8,6 @@ import android.os.Handler
 import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -24,9 +23,13 @@ import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.gms.location.LocationServices
 import com.google.android.material.tabs.TabLayout
+import kotlinx.coroutines.launch
 import space.declared.weather.R
 import space.declared.weather.data.CityResult
 import space.declared.weather.data.DailyForecast
@@ -35,6 +38,7 @@ import java.util.Locale
 
 class WeatherFragment : Fragment() {
 
+    // Use the refactored WeatherViewModel
     private val viewModel: MainViewModel by activityViewModels()
 
     // --- UI Elements ---
@@ -63,15 +67,14 @@ class WeatherFragment : Fragment() {
     private var searchRunnable: Runnable? = null
 
     private val fusedLocationClient by lazy {
-        LocationServices.getFusedLocationProviderClient(requireActivity()) }
+        LocationServices.getFusedLocationProviderClient(requireActivity())
+    }
 
     private lateinit var locationPermissionRequest:
             androidx.activity.result.ActivityResultLauncher<Array<String>>
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        Log.i("WeatherFragment","onCreate called")
         super.onCreate(savedInstanceState)
-
         locationPermissionRequest = registerForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions()
         ) { permissions ->
@@ -87,29 +90,24 @@ class WeatherFragment : Fragment() {
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        Log.i("WeatherFragment","onCretaedView Called")
         return inflater.inflate(R.layout.fragment_weather, container, false)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         initializeViews(view)
-        Log.i("WeatherFragment","onViewCreated Called")
-
         setupClickListeners()
         setupSearch()
         setupObservers()
 
-        val isLoadingValue = viewModel.isLoading.value ?: false
-        if (viewModel.mainScreenState.value == null && !isLoadingValue) {
-            Log.i("WeatherFragment", "onViewCreated: Triggering initial getCurrentLocationWeather() as no data is loaded.")
+        // Trigger initial data load if the ViewModel has no data yet
+        if (viewModel.uiState.value.cityName == null && !viewModel.uiState.value.isLoading) {
             getCurrentLocationWeather()
-        } else if (viewModel.mainScreenState.value != null) {
-            Log.i("WeatherFragment", "onViewCreated: ViewModel already has data. Expecting UI to update via observers.")
         }
     }
 
     private fun initializeViews(view: View) {
+        // This function remains the same, binding all the view elements
         progressBar = view.findViewById(R.id.progressBar)
         weatherDataContainer = view.findViewById(R.id.weatherDataContainer)
         citySearch = view.findViewById(R.id.citySearch)
@@ -138,18 +136,15 @@ class WeatherFragment : Fragment() {
 
     private fun setupSearch() {
         citySearchAdapter = CitySearchAdapter { city ->
-            // When a city is clicked, fetch its weather
-            val displayName = if (city.state != null && city.state.isNotEmpty()) "${city.name}, ${city.state}" else city.name
-            viewModel.fetchWeatherAndWaterData(city.latitude, city.longitude, displayName)
+            val displayName = if (!city.state.isNullOrEmpty()) "${city.name}, ${city.state}" else city.name
+            viewModel.fetchInitialData(city.latitude, city.longitude, displayName)
 
-            // Hide the keyboard and the search results list
             val imm = requireContext().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
             imm.hideSoftInputFromWindow(view?.windowToken, 0)
             citySearch.clearFocus()
             citySearch.text.clear()
-            viewModel.onCitySelectionDone()
+            viewModel.onCitySelectionDialogShown() // Hides the search results
         }
-
         citySearchRecyclerView.adapter = citySearchAdapter
 
         citySearch.addTextChangedListener(object : TextWatcher {
@@ -157,70 +152,64 @@ class WeatherFragment : Fragment() {
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 searchRunnable?.let { searchHandler.removeCallbacks(it) }
             }
-
             override fun afterTextChanged(s: Editable?) {
                 val query = s.toString().trim()
                 if (query.length > 2) {
                     searchRunnable = Runnable { viewModel.onCitySearch(query) }
-                    searchHandler.postDelayed(searchRunnable!!, 500L) // 500ms delay
+                    searchHandler.postDelayed(searchRunnable!!, 500L) // 500ms debounce
                 } else {
-                    viewModel.clearSearchAndHideCard()                }
+                    viewModel.onCitySelectionDialogShown() // Clear results for short queries
+                }
             }
         })
     }
 
     private fun setupObservers() {
-        viewModel.isLoading.observe(viewLifecycleOwner) { isLoading ->
-            progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
-            if (isLoading) {
-                weatherDataContainer.visibility = View.GONE
-            } else {
-                weatherDataContainer.visibility = View.VISIBLE
-            }
-        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiState.collect { state ->
+                    // --- Loading State ---
+                    progressBar.visibility = if (state.isLoading) View.VISIBLE else View.GONE
+                    weatherDataContainer.visibility = if (state.isLoading || state.error != null) View.GONE else View.VISIBLE
 
-        viewModel.mainScreenState.observe(viewLifecycleOwner) { state ->
-            progressBar.visibility = View.GONE
-            weatherDataContainer.visibility = View.VISIBLE
-            cityName.text = state.cityName
-            setupForecastTabs(state.fullForecast)
-        }
+                    // --- Error State ---
+                    state.error?.let {
+                        Toast.makeText(requireContext(), it, Toast.LENGTH_LONG).show()
+                    }
 
-        viewModel.selectedDayWeather.observe(viewLifecycleOwner) { details ->
-            temperature.text = "${details.tempMax} / ${details.tempMin}"
-            weatherDescription.text = details.weatherDescription
-            uvIndex.text = details.uvIndex
-            sunrise.text = details.sunrise
-            sunset.text = details.sunset
-            daylight.text = details.daylight
-            pressure.text = details.pressure ?: "Pressure: N/A"
-            humidity.text = details.humidity ?: "Humidity: N/A"
-            precipitation.text = details.precipitationChance ?: "Precipitation Chance: N/A"
-            cloudCover.text = details.cloudCover ?: "Cloud Cover: N/A"
-            wind.text = details.wind ?: "Wind: N/A"
-            windGusts.text = details.windGusts ?: "Gusts: N/A"
-        }
+                    // --- City Search Results ---
+                    citySearchAdapter.submitList(state.cityList)
+                    citySearchCardContainer.visibility = if (state.cityList.isNotEmpty()) View.VISIBLE else View.GONE
 
-        viewModel.cityList.observe(viewLifecycleOwner) { cities ->
-            if (cities.isNotEmpty()) {
-                citySearchAdapter.submitList(cities)
-            }
-        }
+                    // --- Main Weather Data ---
+                    state.cityName?.let { cityName.text = it }
+                    if (state.fullForecast.isNotEmpty()) {
+                        setupForecastTabs(state.fullForecast)
+                    }
 
-        viewModel.showCitySearchCard.observe(viewLifecycleOwner) { show ->
-            citySearchCardContainer.visibility = if (show) View.VISIBLE else View.GONE
-        }
-
-        viewModel.error.observe(viewLifecycleOwner) { error ->
-            if (error.isNotEmpty()) {
-                Toast.makeText(requireContext(), error, Toast.LENGTH_LONG).show()
-                progressBar.visibility = View.GONE
-                weatherDataContainer.visibility = View.GONE
+                    // --- Detailed Daily Weather ---
+                    state.selectedDayWeather?.let { details ->
+                        temperature.text = "${details.tempMax} / ${details.tempMin}"
+                        weatherDescription.text = details.weatherDescription
+                        uvIndex.text = details.uvIndex
+                        sunrise.text = details.sunrise
+                        sunset.text = details.sunset
+                        daylight.text = details.daylight
+                        pressure.text = details.pressure ?: "Pressure: N/A"
+                        humidity.text = details.humidity ?: "Humidity: N/A"
+                        precipitation.text = details.precipitationChance ?: "Precipitation Chance: N/A"
+                        cloudCover.text = details.cloudCover ?: "Cloud Cover: N/A"
+                        wind.text = details.wind ?: "Wind: N/A"
+                        windGusts.text = details.windGusts ?: "Gusts: N/A"
+                    }
+                }
             }
         }
     }
 
     private fun setupForecastTabs(forecast: List<DailyForecast>) {
+        if (forecastTabs.tabCount == forecast.size) return // Avoid re-adding tabs unnecessarily
+
         forecastTabs.removeAllTabs()
         forecast.forEachIndexed { index, day ->
             val tab = forecastTabs.newTab().setText(formatDayForTab(day.date, index))
@@ -237,16 +226,15 @@ class WeatherFragment : Fragment() {
     }
 
     private fun getCurrentLocationWeather() {
-        Log.i("WeatherFragment::getCurrentLocationWeather", "isLoading, ${viewModel.isLoading.value}")
-        viewModel.setLoading(true)
-
         if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             fusedLocationClient.lastLocation.addOnSuccessListener { location ->
                 if (location != null) {
-                    viewModel.fetchWeatherAndWaterData(location.latitude, location.longitude, "Current Location")
+                    viewModel.fetchInitialData(location.latitude, location.longitude, "Current Location")
                 } else {
                     Toast.makeText(requireContext(), "Could not retrieve location. Is GPS on?", Toast.LENGTH_SHORT).show()
                 }
+            }.addOnFailureListener {
+                Toast.makeText(requireContext(), "Failed to get location.", Toast.LENGTH_SHORT).show()
             }
         } else {
             locationPermissionRequest.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
@@ -263,3 +251,45 @@ class WeatherFragment : Fragment() {
         } catch (e: Exception) { "N/A" }
     }
 }
+
+// You will need a CitySearchAdapter similar to this:
+/*
+class CitySearchAdapter(private val onCityClicked: (CityResult) -> Unit) :
+    ListAdapter<CityResult, CitySearchAdapter.CityViewHolder>(CityDiffCallback()) {
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CityViewHolder {
+        val view = LayoutInflater.from(parent.context)
+            .inflate(R.layout.city_search_item, parent, false) // Ensure you have this layout
+        return CityViewHolder(view)
+    }
+
+    override fun onBindViewHolder(holder: CityViewHolder, position: Int) {
+        val city = getItem(position)
+        holder.bind(city)
+        holder.itemView.setOnClickListener { onCityClicked(city) }
+    }
+
+    class CityViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        private val nameTextView: TextView = itemView.findViewById(R.id.cityNameTextView) // Adjust ID
+
+        fun bind(city: CityResult) {
+            val displayName = if (!city.state.isNullOrEmpty()) {
+                "${city.name}, ${city.state}, ${city.country}"
+            } else {
+                "${city.name}, ${city.country}"
+            }
+            nameTextView.text = displayName
+        }
+    }
+}
+
+class CityDiffCallback : DiffUtil.ItemCallback<CityResult>() {
+    override fun areItemsTheSame(oldItem: CityResult, newItem: CityResult): Boolean {
+        return oldItem.id == newItem.id
+    }
+
+    override fun areContentsTheSame(oldItem: CityResult, newItem: CityResult): Boolean {
+        return oldItem == newItem
+    }
+}
+*/

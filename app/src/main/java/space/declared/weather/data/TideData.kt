@@ -1,8 +1,11 @@
 package space.declared.weather.data
 
+import androidx.annotation.Keep
+
 /**
  * Represents a single tide prediction (high or low tide).
  */
+@Keep
 data class TidePrediction(
     val time: String,
     val type: String, // "H" for high, "L" for low
@@ -12,6 +15,7 @@ data class TidePrediction(
 /**
  * A container for the results of a tide data fetch, including the station name and location.
  */
+@Keep
 data class TideData(
     val stationName: String,
     val latitude: Double,
