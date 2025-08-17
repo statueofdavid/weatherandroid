@@ -33,7 +33,7 @@ class MainActivity : AppCompatActivity() {
         navController = navHostFragment.navController
 
         // Set up AppBarConfiguration using both NavController and DrawerLayout
-        val appBarConfiguration = AppBarConfiguration(navController.graph, drawerLayout)
+        val appBarConfiguration = AppBarConfiguration(navController.graph)
         NavigationUI.setupWithNavController(toolbar, navController, appBarConfiguration)
         NavigationUI.setupWithNavController(bottomNavView, navController)
 

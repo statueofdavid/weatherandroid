@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.preference.PreferenceManager
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -133,7 +134,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
                 }
-                .collect { locations ->
+        }
+        val savedLocationsFlow: StateFlow<List<SavedLocation>> = repository.savedLocations
+            .map { entities ->
+                entities.map { entity ->
+                    SavedLocation(
+                        entity.id,
+                        entity.name,
+                        entity.latitude,
+                        entity.longitude,
+                        entity.isCurrentLocation
+                    )
+                }
+            }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5000),
+                initialValue = emptyList() // Set an initial value to prevent a null state
+            )
+
+            viewModelScope.launch {
+                savedLocationsFlow.collect { locations ->
                     // Update the _uiState with the new list of locations
                     _uiState.update { it.copy(savedLocations = locations) }
                 }

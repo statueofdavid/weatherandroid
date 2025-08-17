@@ -29,11 +29,13 @@ class SavedLocationsAdapter(
 
     class LocationViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val nameTextView: TextView = itemView.findViewById(R.id.locationNameTextView)
+        private val latLonTextView: TextView = itemView.findViewById(R.id.locationLatLonTextView)
         val deleteButton: ImageView = itemView.findViewById(R.id.deleteButton)
 
         fun bind(location: SavedLocation) {
-            // Display the location's name
             nameTextView.text = location.name
+            val latLon = "Lat: ${String.format("%.2f", location.latitude)}, Lon: ${String.format("%.2f", location.longitude)}"
+            latLonTextView.text = latLon
         }
     }
 }
