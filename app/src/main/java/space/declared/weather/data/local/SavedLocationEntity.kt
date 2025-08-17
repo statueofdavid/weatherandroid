@@ -20,5 +20,6 @@ data class SavedLocationEntity(
     val name: String,
     val latitude: Double,
     val longitude: Double,
+    val timestamp: Long,
     val isCurrentLocation: Boolean = false
 )

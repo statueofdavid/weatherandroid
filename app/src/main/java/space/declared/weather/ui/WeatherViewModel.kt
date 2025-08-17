@@ -59,6 +59,7 @@ data class SavedLocation(
     val name: String,
     val latitude: Double,
     val longitude: Double,
+    val timestamp: Long,
     val isCurrentLocation: Boolean
 )
 
@@ -130,6 +131,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             entity.name,
                             entity.latitude,
                             entity.longitude,
+                            entity.timestamp,
                             entity.isCurrentLocation
                         )
                     }
@@ -143,6 +145,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         entity.name,
                         entity.latitude,
                         entity.longitude,
+                        entity.timestamp,
                         entity.isCurrentLocation
                     )
                 }
@@ -193,7 +196,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
-            saveLocation(name, latitude, longitude)
+            val timestamp = System.currentTimeMillis()
+            saveLocation(name, latitude, longitude, timestamp)
         }
 
         viewModelScope.launch {
@@ -275,11 +279,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(cityList = emptyList()) }
     }
 
-    fun saveLocation(name: String, latitude: Double, longitude: Double) {
+    fun saveLocation(name: String, latitude: Double, longitude: Double, timestemp: Long) {
         Log.d("ViewModel_Call", "Received request to save location: $name")
         viewModelScope.launch {
             repository.saveLocation(
-                SavedLocationEntity(name = name, latitude = latitude, longitude = longitude)
+                SavedLocationEntity(
+                    name = name,
+                    latitude = latitude,
+                    longitude = longitude,
+                    timestamp = timestemp)
             )
         }
     }
@@ -287,7 +295,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteLocation(location: SavedLocation) {
         viewModelScope.launch {
             repository.deleteLocation(
-                SavedLocationEntity(location.id, location.name, location.latitude, location.longitude, location.isCurrentLocation)
+                SavedLocationEntity(
+                    location.id,
+                    location.name,
+                    location.latitude,
+                    location.longitude,
+                    location.timestamp,
+                    location.isCurrentLocation)
             )
         }
     }

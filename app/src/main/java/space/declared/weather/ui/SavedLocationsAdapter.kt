@@ -8,6 +8,9 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import space.declared.weather.R
 import space.declared.weather.ui.SavedLocation
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class SavedLocationsAdapter(
     private val onLocationClicked: (SavedLocation) -> Unit,
@@ -30,12 +33,19 @@ class SavedLocationsAdapter(
     class LocationViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val nameTextView: TextView = itemView.findViewById(R.id.locationNameTextView)
         private val latLonTextView: TextView = itemView.findViewById(R.id.locationLatLonTextView)
+        private val timeTextView: TextView = itemView.findViewById(R.id.locationTimeTextView)
         val deleteButton: ImageView = itemView.findViewById(R.id.deleteButton)
 
         fun bind(location: SavedLocation) {
             nameTextView.text = location.name
+
             val latLon = "Lat: ${String.format("%.2f", location.latitude)}, Lon: ${String.format("%.2f", location.longitude)}"
             latLonTextView.text = latLon
+
+            val date = Date(location.timestamp)
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            val timestampString = dateFormat.format(date)
+            timeTextView.text = timestampString
         }
     }
 }

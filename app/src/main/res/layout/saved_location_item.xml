@@ -26,6 +26,13 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
             android:textAppearance="?attr/textAppearanceListItemSecondary" />
+
+        <TextView
+            android:id="@+id/locationTimeTextView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textAppearance="?attr/textAppearanceListItemSecondary" />
     </LinearLayout>
 
     <ImageView

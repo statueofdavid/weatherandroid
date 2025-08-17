@@ -7,7 +7,7 @@
     <item
         android:id="@+id/navigation_weather"
         android:icon="@drawable/ic_weather"
-        android:title="Weather" />
+        android:title="Weater" />
     <item
         android:id="@+id/navigation_water"
         android:icon="@drawable/ic_water"
