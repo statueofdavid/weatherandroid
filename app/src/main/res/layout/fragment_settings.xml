@@ -7,6 +7,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:orientation="vertical"
     android:padding="16dp"
     tools:context=".ui.SettingsFragment">
@@ -16,8 +17,8 @@
         style="@style/TextAppearance.MaterialComponents.Headline6"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Data Sync"
-        android:textColor="?attr/colorPrimary" />
+        android:text="@string/data_sync_title"
+        android:textColor="@color/black" />
 
     <!-- Sync Status Indicator (hidden by default) -->
     <LinearLayout
@@ -39,17 +40,17 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="16dp"
-            android:text="Syncing latest station data..."
+            android:text="@string/syncing_text_for_station_data"
             android:textAppearance="?android:attr/textAppearanceListItemSecondary" />
     </LinearLayout>
 
-    <!-- NEW: Manual Sync Button -->
+    <!-- Manual Sync Button -->
     <Button
         android:id="@+id/syncNowButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:text="Sync Now" />
+        android:text="@string/sync_now_button_title" />
 
 
     <!-- General Settings Category -->
@@ -58,8 +59,8 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
-        android:text="General Settings"
-        android:textColor="?attr/colorPrimary" />
+        android:text="@string/general_settings_title"
+        android:textColor="@color/black" />
 
     <!-- Unit System Setting -->
     <LinearLayout
@@ -76,7 +77,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Unit System"
+            android:text="@string/unit_system_title"
             android:textSize="16sp" />
 
         <TextView
@@ -102,7 +103,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Water Data Search Radius"
+            android:text="@string/water_data_search_radius_modal_title"
             android:textSize="16sp" />
 
         <TextView
@@ -119,8 +120,8 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
-        android:text="Appearance"
-        android:textColor="?attr/colorPrimary" />
+        android:text="@string/appearance_category_title"
+        android:textColor="@color/black" />
 
     <!-- Dark Mode Setting -->
     <LinearLayout
@@ -137,7 +138,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Dark Mode"
+            android:text="@string/dark_mode_option"
             android:textSize="16sp" />
 
         <TextView

@@ -1,5 +1,13 @@
 <resources>
     <string name="app_name">Declared Space Weather</string>
+    <string name="data_sync_title">Data Sync</string>
+    <string name="syncing_text_for_station_data">Syncing latest station data...</string>
+    <string name="general_settings_title">General Settings</string>
+    <string name="unit_system_title">Unit System</string>
+    <string name="water_data_search_radius_modal_title">Water Data Search Radius</string>
+    <string name="appearance_category_title">Appearance</string>
+    <string name="dark_mode_option">Dark Mode</string>
+    <string name="sync_now_button_title">Sync Now</string>
 
     <!-- Unit Preference -->
     <string-array name="unit_entries">

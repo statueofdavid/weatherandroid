@@ -1,5 +1,6 @@
 package space.declared.weather.ui
 
+import SavedLocationsAdapter
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -8,12 +9,14 @@ import android.os.Handler
 import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -21,18 +24,21 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
+import androidx.drawerlayout.widget.DrawerLayout
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.gms.location.LocationServices
 import com.google.android.material.tabs.TabLayout
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.map
 import space.declared.weather.R
-import space.declared.weather.data.CityResult
 import space.declared.weather.data.DailyForecast
+import space.declared.weather.data.local.SavedLocationEntity
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -42,27 +48,39 @@ class WeatherFragment : Fragment() {
     private val viewModel: MainViewModel by activityViewModels()
 
     // --- UI Elements ---
-    private lateinit var progressBar: ProgressBar
-    private lateinit var weatherDataContainer: LinearLayout
-    private lateinit var citySearch: EditText
-    private lateinit var locationButton: Button
-    private lateinit var forecastTabs: TabLayout
     private lateinit var cityName: TextView
-    private lateinit var temperature: TextView
-    private lateinit var weatherDescription: TextView
-    private lateinit var uvIndex: TextView
-    private lateinit var sunrise: TextView
-    private lateinit var sunset: TextView
-    private lateinit var daylight: TextView
-    private lateinit var pressure: TextView
-    private lateinit var humidity: TextView
-    private lateinit var precipitation: TextView
-    private lateinit var cloudCover: TextView
-    private lateinit var wind: TextView
-    private lateinit var windGusts: TextView
-    private lateinit var citySearchRecyclerView: RecyclerView
     private lateinit var citySearchAdapter: CitySearchAdapter
     private lateinit var citySearchCardContainer: CardView
+
+    private lateinit var citySearchRecyclerView: RecyclerView
+    private lateinit var citySearch: EditText
+    private lateinit var cloudCover: TextView
+
+    private lateinit var drawerLayout: DrawerLayout
+    private lateinit var drawerContainer: FrameLayout
+    private lateinit var daylight: TextView
+
+    private lateinit var forecastTabs: TabLayout
+    private lateinit var humidity: TextView
+    private lateinit var locationButton: Button
+
+    private lateinit var savedLocationsAdapter: SavedLocationsAdapter
+    private lateinit var savedLocationsRecyclerView: RecyclerView
+    private lateinit var sunrise: TextView
+    private lateinit var sunset: TextView
+
+    private lateinit var precipitation: TextView
+    private lateinit var progressBar: ProgressBar
+    private lateinit var pressure: TextView
+
+    private lateinit var temperature: TextView
+    private lateinit var uvIndex: TextView
+    private lateinit var weatherDataContainer: LinearLayout
+
+    private lateinit var weatherDescription: TextView
+    private lateinit var wind: TextView
+    private lateinit var windGusts: TextView
+
     private val searchHandler = Handler(Looper.getMainLooper())
     private var searchRunnable: Runnable? = null
 
@@ -107,7 +125,6 @@ class WeatherFragment : Fragment() {
     }
 
     private fun initializeViews(view: View) {
-        // This function remains the same, binding all the view elements
         progressBar = view.findViewById(R.id.progressBar)
         weatherDataContainer = view.findViewById(R.id.weatherDataContainer)
         citySearch = view.findViewById(R.id.citySearch)
@@ -128,6 +145,25 @@ class WeatherFragment : Fragment() {
         cloudCover = view.findViewById(R.id.cloudCover)
         wind = view.findViewById(R.id.wind)
         windGusts = view.findViewById(R.id.windGusts)
+
+        drawerLayout = (requireActivity() as MainActivity).findViewById(R.id.drawer_layout)
+        val navDrawerContainer = drawerLayout.findViewById<FrameLayout>(R.id.nav_drawer_container)
+
+        if (navDrawerContainer != null) {
+            val savedLocationsRecyclerView: RecyclerView = navDrawerContainer.findViewById(R.id.savedLocationsRecyclerView)
+
+            savedLocationsAdapter = SavedLocationsAdapter(
+                onLocationClicked = { location ->
+                    viewModel.fetchInitialData(location.latitude, location.longitude, location.name)
+                    drawerLayout.closeDrawers()
+                },
+                onDeleteClicked = { location ->
+                    viewModel.deleteLocation(location)
+                }
+            )
+            savedLocationsRecyclerView.adapter = savedLocationsAdapter
+            savedLocationsRecyclerView.layoutManager = LinearLayoutManager(requireContext())
+        }
     }
 
     private fun setupClickListeners() {
@@ -205,6 +241,15 @@ class WeatherFragment : Fragment() {
                 }
             }
         }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiState.map { it.savedLocations }.collect { locations ->
+                    Log.d("Fragment_Observer", "Received ${locations.size} saved locations. Updating adapter.")
+                    savedLocationsAdapter.submitList(locations)
+                }
+            }
+        }
     }
 
     private fun setupForecastTabs(forecast: List<DailyForecast>) {
@@ -251,45 +296,3 @@ class WeatherFragment : Fragment() {
         } catch (e: Exception) { "N/A" }
     }
 }
-
-// You will need a CitySearchAdapter similar to this:
-/*
-class CitySearchAdapter(private val onCityClicked: (CityResult) -> Unit) :
-    ListAdapter<CityResult, CitySearchAdapter.CityViewHolder>(CityDiffCallback()) {
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CityViewHolder {
-        val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.city_search_item, parent, false) // Ensure you have this layout
-        return CityViewHolder(view)
-    }
-
-    override fun onBindViewHolder(holder: CityViewHolder, position: Int) {
-        val city = getItem(position)
-        holder.bind(city)
-        holder.itemView.setOnClickListener { onCityClicked(city) }
-    }
-
-    class CityViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        private val nameTextView: TextView = itemView.findViewById(R.id.cityNameTextView) // Adjust ID
-
-        fun bind(city: CityResult) {
-            val displayName = if (!city.state.isNullOrEmpty()) {
-                "${city.name}, ${city.state}, ${city.country}"
-            } else {
-                "${city.name}, ${city.country}"
-            }
-            nameTextView.text = displayName
-        }
-    }
-}
-
-class CityDiffCallback : DiffUtil.ItemCallback<CityResult>() {
-    override fun areItemsTheSame(oldItem: CityResult, newItem: CityResult): Boolean {
-        return oldItem.id == newItem.id
-    }
-
-    override fun areContentsTheSame(oldItem: CityResult, newItem: CityResult): Boolean {
-        return oldItem == newItem
-    }
-}
-*/

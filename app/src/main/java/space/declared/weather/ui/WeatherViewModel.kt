@@ -2,6 +2,7 @@ package space.declared.weather.ui
 
 import android.app.Application
 import android.location.Location
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.preference.PreferenceManager
@@ -10,6 +11,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
@@ -18,6 +21,7 @@ import space.declared.weather.data.DailyForecast
 import space.declared.weather.data.WaterData
 import space.declared.weather.data.WeatherRepository
 import space.declared.weather.data.local.AppDatabase
+import space.declared.weather.data.local.SavedLocationEntity
 import space.declared.weather.data.local.StationLocalDataSource
 import space.declared.weather.data.source.NoaaRemoteDataSource
 import space.declared.weather.data.source.OpenMeteoRemoteDataSource
@@ -49,6 +53,14 @@ data class DetailedDayWeather(
     val windGusts: String?
 )
 
+data class SavedLocation(
+    val id: Int,
+    val name: String,
+    val latitude: Double,
+    val longitude: Double,
+    val isCurrentLocation: Boolean
+)
+
 enum class SortType {
     NONE,
     BY_NAME,
@@ -66,7 +78,8 @@ data class WeatherUiState(
     val stationListItems: List<StationListItem> = emptyList(),
     val selectedDayWeather: DetailedDayWeather? = null,
     val selectedStationDetails: WaterData? = null,
-    val stationSortType: SortType = SortType.BY_DISTANCE
+    val stationSortType: SortType = SortType.BY_DISTANCE,
+    val savedLocations: List<SavedLocation> = emptyList()
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -75,7 +88,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(application)
 
     private val _uiState = MutableStateFlow(WeatherUiState())
-    val uiState: StateFlow<WeatherUiState> = _uiState.asStateFlow()
+    var uiState: StateFlow<WeatherUiState> = _uiState.asStateFlow()
 
     private var lastFullResponse: JSONObject? = null
     private var lastUserLocation: Location? = null
@@ -87,15 +100,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val openMeteoDataSource = OpenMeteoRemoteDataSource(application)
         val noaaDataSource = NoaaRemoteDataSource(application)
         val usgsDataSource = UsgsRemoteDataSource(application)
-        // Pass the application context to the repository for SharedPreferences
-        repository = WeatherRepository(application, openMeteoDataSource, noaaDataSource, usgsDataSource, localDataSource)
 
-        // NEW: Launch a coroutine to observe the sync status from the repository.
-        // This will keep the UI state in sync with the repository's background work.
+        // Pass the application context to the repository for SharedPreferences
+        repository = WeatherRepository(
+            application,
+            openMeteoDataSource,
+            noaaDataSource,
+            usgsDataSource,
+            localDataSource,
+            database.savedLocationDao()
+        )
+
+        // keeps the UI state in sync with the repository's background work.
         viewModelScope.launch {
             repository.isSyncing.collect { syncingStatus ->
                 _uiState.update { it.copy(isSyncing = syncingStatus) }
             }
+        }
+
+        viewModelScope.launch {
+            // Collect saved locations and update the UI state
+            repository.savedLocations
+                .map { entities ->
+                    // Transform database entities into the UI model
+                    entities.map { entity ->
+                        SavedLocation(
+                            entity.id,
+                            entity.name,
+                            entity.latitude,
+                            entity.longitude,
+                            entity.isCurrentLocation
+                        )
+                    }
+                }
+                .collect { locations ->
+                    // Update the _uiState with the new list of locations
+                    _uiState.update { it.copy(savedLocations = locations) }
+                }
         }
     }
 
@@ -128,6 +169,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         lastUserLocation = Location("").apply {
             this.latitude = latitude
             this.longitude = longitude
+        }
+
+        viewModelScope.launch {
+            saveLocation(name, latitude, longitude)
         }
 
         viewModelScope.launch {
@@ -207,6 +252,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onCitySelectionDialogShown() {
         _uiState.update { it.copy(cityList = emptyList()) }
+    }
+
+    fun saveLocation(name: String, latitude: Double, longitude: Double) {
+        Log.d("ViewModel_Call", "Received request to save location: $name")
+        viewModelScope.launch {
+            repository.saveLocation(
+                SavedLocationEntity(name = name, latitude = latitude, longitude = longitude)
+            )
+        }
+    }
+
+    fun deleteLocation(location: SavedLocation) {
+        viewModelScope.launch {
+            repository.deleteLocation(
+                SavedLocationEntity(location.id, location.name, location.latitude, location.longitude, location.isCurrentLocation)
+            )
+        }
     }
 
     // --- PRIVATE HELPER FUNCTIONS ---

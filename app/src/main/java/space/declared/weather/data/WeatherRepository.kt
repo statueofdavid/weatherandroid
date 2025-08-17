@@ -6,6 +6,7 @@ import androidx.preference.PreferenceManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,11 +14,13 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import space.declared.weather.data.local.StationEntity
 import space.declared.weather.data.local.StationLocalDataSource
+import space.declared.weather.data.local.SavedLocationDao
 import space.declared.weather.data.source.NoaaRemoteDataSource
 import space.declared.weather.data.source.OpenMeteoRemoteDataSource
 import space.declared.weather.data.TideData
 import space.declared.weather.data.source.UsgsRemoteDataSource
 import space.declared.weather.data.WaterLevelData
+import space.declared.weather.data.local.SavedLocationEntity
 import java.util.concurrent.TimeUnit
 
 class WeatherRepository(
@@ -25,17 +28,36 @@ class WeatherRepository(
     private val openMeteoDataSource: OpenMeteoRemoteDataSource,
     private val noaaDataSource: NoaaRemoteDataSource,
     private val usgsDataSource: UsgsRemoteDataSource,
-    private val localDataSource: StationLocalDataSource
+    private val localDataSource: StationLocalDataSource,
+    private val savedLocationDao: SavedLocationDao
 ) {
-
     private val repositoryScope = CoroutineScope(Dispatchers.IO)
     private val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context)
-
     private val _isSyncing = MutableStateFlow(false)
+
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
+    val savedLocations: Flow<List<SavedLocationEntity>> = savedLocationDao.getAllLocations()
 
     init {
         syncStationsIfNeeded()
+    }
+
+    suspend fun saveLocation(location: SavedLocationEntity) {
+        // Check if the location already exists
+        val existingLocation = savedLocationDao.getLocationByName(location.name)
+
+        if (existingLocation == null) {
+            // If the location doesn't exist, save it to the database
+            Log.d("WeatherRepository", "Saving new location: ${location.name}")
+            savedLocationDao.insert(location)
+        } else {
+            // If the location already exists, do not save it again
+            Log.d("WeatherRepository", "Location '${location.name}' already exists. Skipping save.")
+        }
+    }
+
+    suspend fun deleteLocation(location: SavedLocationEntity) {
+        savedLocationDao.delete(location)
     }
 
     /**
