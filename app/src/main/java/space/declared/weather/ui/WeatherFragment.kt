@@ -1,6 +1,5 @@
 package space.declared.weather.ui
 
-import SavedLocationsAdapter
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -27,6 +26,7 @@ import androidx.core.content.ContextCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -38,7 +38,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.map
 import space.declared.weather.R
 import space.declared.weather.data.DailyForecast
-import space.declared.weather.data.local.SavedLocationEntity
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -64,8 +63,6 @@ class WeatherFragment : Fragment() {
     private lateinit var humidity: TextView
     private lateinit var locationButton: Button
 
-    private lateinit var savedLocationsAdapter: SavedLocationsAdapter
-    private lateinit var savedLocationsRecyclerView: RecyclerView
     private lateinit var sunrise: TextView
     private lateinit var sunset: TextView
 
@@ -145,25 +142,6 @@ class WeatherFragment : Fragment() {
         cloudCover = view.findViewById(R.id.cloudCover)
         wind = view.findViewById(R.id.wind)
         windGusts = view.findViewById(R.id.windGusts)
-
-        drawerLayout = (requireActivity() as MainActivity).findViewById(R.id.drawer_layout)
-        val navDrawerContainer = drawerLayout.findViewById<FrameLayout>(R.id.nav_drawer_container)
-
-        if (navDrawerContainer != null) {
-            val savedLocationsRecyclerView: RecyclerView = navDrawerContainer.findViewById(R.id.savedLocationsRecyclerView)
-
-            savedLocationsAdapter = SavedLocationsAdapter(
-                onLocationClicked = { location ->
-                    viewModel.fetchInitialData(location.latitude, location.longitude, location.name)
-                    drawerLayout.closeDrawers()
-                },
-                onDeleteClicked = { location ->
-                    viewModel.deleteLocation(location)
-                }
-            )
-            savedLocationsRecyclerView.adapter = savedLocationsAdapter
-            savedLocationsRecyclerView.layoutManager = LinearLayoutManager(requireContext())
-        }
     }
 
     private fun setupClickListeners() {
@@ -238,15 +216,6 @@ class WeatherFragment : Fragment() {
                         wind.text = details.wind ?: "Wind: N/A"
                         windGusts.text = details.windGusts ?: "Gusts: N/A"
                     }
-                }
-            }
-        }
-
-        viewLifecycleOwner.lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.uiState.map { it.savedLocations }.collect { locations ->
-                    Log.d("Fragment_Observer", "Received ${locations.size} saved locations. Updating adapter.")
-                    savedLocationsAdapter.submitList(locations)
                 }
             }
         }

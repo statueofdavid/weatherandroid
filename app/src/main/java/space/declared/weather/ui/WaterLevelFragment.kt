@@ -1,5 +1,6 @@
 package space.declared.weather.ui
 
+import StationListAdapter
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -117,6 +118,7 @@ class WaterLevelFragment : Fragment() {
                 viewModel.uiState.collect { state ->
                     // --- Handle List Display ---
                     listProgressBar.visibility = if (state.isLoading && state.stationListItems.isEmpty()) View.VISIBLE else View.GONE
+                    stationListAdapter.setUnitSystem(state.unitSystem)
                     stationListAdapter.submitList(state.stationListItems)
 
                     val isListEmpty = state.stationListItems.isEmpty() && !state.isLoading
@@ -179,44 +181,5 @@ class WaterLevelFragment : Fragment() {
             val date = inputFormat.parse(dateTimeString)
             outputFormat.format(date!!)
         } catch (e: Exception) { "N/A" }
-    }
-}
-
-// --- RecyclerView Adapter and DiffUtil ---
-class StationListAdapter(private val onStationClicked: (StationListItem) -> Unit) :
-    ListAdapter<StationListItem, StationListAdapter.StationViewHolder>(StationDiffCallback()) {
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): StationViewHolder {
-        val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.station_list_item, parent, false)
-        return StationViewHolder(view)
-    }
-
-    override fun onBindViewHolder(holder: StationViewHolder, position: Int) {
-        val station = getItem(position)
-        holder.bind(station)
-        holder.itemView.setOnClickListener { onStationClicked(station) }
-    }
-
-    class StationViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        private val nameTextView: TextView = itemView.findViewById(R.id.stationNameTextView)
-        private val distanceTextView: TextView = itemView.findViewById(R.id.stationDistanceTextView)
-
-        fun bind(stationItem: StationListItem) {
-            // Use the correct property 'stationName' from the entity
-            nameTextView.text = stationItem.entity.name
-            distanceTextView.text = String.format("%.1f miles", stationItem.distance)
-        }
-    }
-}
-
-class StationDiffCallback : DiffUtil.ItemCallback<StationListItem>() {
-    override fun areItemsTheSame(oldItem: StationListItem, newItem: StationListItem): Boolean {
-        // Use the correct property 'stationId' for comparison
-        return oldItem.entity.id == newItem.entity.id
-    }
-
-    override fun areContentsTheSame(oldItem: StationListItem, newItem: StationListItem): Boolean {
-        return oldItem == newItem
     }
 }

@@ -23,6 +23,7 @@ import space.declared.weather.data.WaterData
 import space.declared.weather.data.WeatherRepository
 import space.declared.weather.data.local.AppDatabase
 import space.declared.weather.data.local.SavedLocationEntity
+import space.declared.weather.data.local.StationEntity
 import space.declared.weather.data.local.StationLocalDataSource
 import space.declared.weather.data.source.NoaaRemoteDataSource
 import space.declared.weather.data.source.OpenMeteoRemoteDataSource
@@ -81,7 +82,8 @@ data class WeatherUiState(
     val selectedDayWeather: DetailedDayWeather? = null,
     val selectedStationDetails: WaterData? = null,
     val stationSortType: SortType = SortType.BY_DISTANCE,
-    val savedLocations: List<SavedLocation> = emptyList()
+    val savedLocations: List<SavedLocation> = emptyList(),
+    val unitSystem: String = "imperial"
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -137,8 +139,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
         }
-        val savedLocationsFlow: StateFlow<List<SavedLocation>> = repository.savedLocations
-            .map { entities ->
+        val savedLocationsFlow: StateFlow<List<SavedLocation>> =
+            repository.savedLocations.map { entities ->
                 entities.map { entity ->
                     SavedLocation(
                         entity.id,
@@ -156,11 +158,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 initialValue = emptyList() // Set an initial value to prevent a null state
             )
 
-            viewModelScope.launch {
-                savedLocationsFlow.collect { locations ->
-                    // Update the _uiState with the new list of locations
-                    _uiState.update { it.copy(savedLocations = locations) }
-                }
+        viewModelScope.launch {
+            savedLocationsFlow.collect { locations ->
+                // Update the _uiState with the new list of locations
+                _uiState.update { it.copy(savedLocations = locations) }
+            }
         }
     }
 
@@ -189,7 +191,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun fetchInitialData(latitude: Double, longitude: Double, name: String) {
+        val units = sharedPreferences.getString("units", "imperial") ?: "imperial"
+
+        _uiState.update { it.copy(isLoading = true, error = null, unitSystem = units) }
         _uiState.update { it.copy(isLoading = true, error = null) }
+
         lastUserLocation = Location("").apply {
             this.latitude = latitude
             this.longitude = longitude
@@ -335,8 +341,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 this.latitude = entity.latitude
                 this.longitude = entity.longitude
             }
-            val distance = lastUserLocation?.distanceTo(stationLocation)?.times(0.000621371f) ?: 0f
-            StationListItem(entity, distance)
+            val distanceInMeters = lastUserLocation?.distanceTo(stationLocation) ?: 0f
+            StationListItem(entity, distanceInMeters)
         }
         originalStationList = stationItems
         return stationItems
@@ -345,7 +351,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun processStationList(list: List<StationListItem>, sortType: SortType): List<StationListItem> {
         return when (sortType) {
             SortType.BY_NAME -> list.sortedBy { it.entity.name }
-            SortType.BY_DISTANCE -> list.sortedBy { it.distance }
+            SortType.BY_DISTANCE -> list.sortedBy { it.distanceInMeters }
             SortType.NONE -> list
         }
     }

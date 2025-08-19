@@ -6,7 +6,7 @@
     <string name="unit_system_title">Unit System</string>
     <string name="water_data_search_radius_modal_title">Water Data Search Radius</string>
     <string name="appearance_category_title">Appearance</string>
-    <string name="dark_mode_option">Dark Mode</string>
+    <string name="dark_mode_option">Mode</string>
     <string name="sync_now_button_title">Sync Now</string>
 
     <!-- Unit Preference -->
