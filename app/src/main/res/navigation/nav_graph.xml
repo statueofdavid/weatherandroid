@@ -8,13 +8,13 @@
     <fragment
         android:id="@+id/navigation_weather"
         android:name="space.declared.weather.ui.WeatherFragment"
-        android:label="Weather"
+        android:label="Declared Space Weather"
         tools:layout="@layout/fragment_weather" />
 
     <fragment
         android:id="@+id/navigation_water"
         android:name="space.declared.weather.ui.WaterLevelFragment"
-        android:label="Water Levels"
+        android:label="Declared Space Water"
         tools:layout="@layout/fragment_water_level" />
 
     <fragment

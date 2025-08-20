@@ -8,5 +8,5 @@ import space.declared.weather.data.local.StationEntity
  */
 data class StationListItem(
     val entity: StationEntity,
-    val distance: Float // in miles
+    val distanceInMeters: Float // in miles
 )

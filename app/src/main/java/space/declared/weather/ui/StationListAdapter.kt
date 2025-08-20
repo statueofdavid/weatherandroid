@@ -11,6 +11,7 @@ import space.declared.weather.ui.StationListItem
 // --- RecyclerView Adapter for the list of water stations ---
 class StationListAdapter(private val onStationClicked: (StationListItem) -> Unit) :
     ListAdapter<StationListItem, StationListAdapter.StationViewHolder>(StationDiffCallback()) {
+    private var unitSystem: String = "imperial"
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): StationViewHolder {
         val view = LayoutInflater.from(parent.context)
@@ -20,17 +21,34 @@ class StationListAdapter(private val onStationClicked: (StationListItem) -> Unit
 
     override fun onBindViewHolder(holder: StationViewHolder, position: Int) {
         val station = getItem(position)
-        holder.bind(station)
+        holder.bind(station, unitSystem)
         holder.itemView.setOnClickListener { onStationClicked(station) }
+    }
+
+    fun setUnitSystem(units: String) {
+        if (unitSystem != units) {
+            unitSystem = units
+            notifyDataSetChanged() // Redraw the list with the new units
+        }
     }
 
     class StationViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val nameTextView: TextView = itemView.findViewById(R.id.stationNameTextView)
         private val distanceTextView: TextView = itemView.findViewById(R.id.stationDistanceTextView)
 
-        fun bind(stationItem: StationListItem) {
+        fun bind(stationItem: StationListItem, unitSystem: String) {
             nameTextView.text = stationItem.entity.name
-            distanceTextView.text = String.format("%.1f miles", stationItem.distance)
+
+            val distanceText = if (unitSystem == "metric") {
+                // Convert meters to kilometers
+                val distanceInKm = stationItem.distanceInMeters / 1000f
+                String.format("%.1f km", distanceInKm)
+            } else {
+                // Convert meters to miles
+                val distanceInMiles = stationItem.distanceInMeters * 0.000621371f
+                String.format("%.1f miles", distanceInMiles)
+            }
+            distanceTextView.text = distanceText
         }
     }
 }

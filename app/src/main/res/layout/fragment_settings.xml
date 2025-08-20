@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  This layout uses a standard LinearLayout to give you full control over the
-  appearance of your settings screen.
+  This layout has been updated to use clickable rows that will trigger
+  centered dialogs for each setting.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -40,10 +41,10 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="16dp"
             android:text="Syncing latest station data..."
-            android:textAppearance="?android:attr/textAppearanceListItemSecondary" />
+            android:textAppearance="?android:attr/textAppearanceListItemSecondary"
+            android:textSize="14sp" />
     </LinearLayout>
 
-    <!-- NEW: Manual Sync Button -->
     <Button
         android:id="@+id/syncNowButton"
         android:layout_width="wrap_content"
@@ -62,7 +63,7 @@
         android:textColor="?attr/colorPrimary" />
 
     <!-- Unit System Setting -->
-    <LinearLayout
+    <RelativeLayout
         android:id="@+id/unitsSetting"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -70,25 +71,41 @@
         android:background="?android:attr/selectableItemBackground"
         android:clickable="true"
         android:focusable="true"
-        android:orientation="vertical"
         android:padding="8dp">
 
-        <TextView
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Unit System"
-            android:textSize="16sp" />
+            android:layout_alignParentStart="true"
+            android:layout_centerVertical="true"
+            android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/unitsSummary"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textAppearance="?android:attr/textAppearanceListItemSecondary"
-            tools:text="Metric (°C, km/h)" />
-    </LinearLayout>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Unit System"
+                android:textSize="22sp" />
+
+            <TextView
+                android:id="@+id/unitsSummary"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="?android:attr/textAppearanceListItemSecondary"
+                tools:text="Metric (°C, km/h)" />
+        </LinearLayout>
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:src="@drawable/ic_chevron_right"
+            app:tint="?android:attr/textColorSecondary" />
+
+    </RelativeLayout>
 
     <!-- Search Radius Setting -->
-    <LinearLayout
+    <RelativeLayout
         android:id="@+id/radiusSetting"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -96,22 +113,37 @@
         android:background="?android:attr/selectableItemBackground"
         android:clickable="true"
         android:focusable="true"
-        android:orientation="vertical"
         android:padding="8dp">
 
-        <TextView
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Water Data Search Radius"
-            android:textSize="16sp" />
+            android:layout_alignParentStart="true"
+            android:layout_centerVertical="true"
+            android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/radiusSummary"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textAppearance="?android:attr/textAppearanceListItemSecondary"
-            tools:text="10 miles" />
-    </LinearLayout>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Water Data Search Radius"
+                android:textSize="22sp" />
+
+            <TextView
+                android:id="@+id/radiusSummary"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="?android:attr/textAppearanceListItemSecondary"
+                tools:text="10 miles" />
+        </LinearLayout>
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:src="@drawable/ic_chevron_right"
+            app:tint="?android:attr/textColorSecondary" />
+    </RelativeLayout>
 
     <!-- Appearance Category -->
     <TextView
@@ -123,7 +155,7 @@
         android:textColor="?attr/colorPrimary" />
 
     <!-- Dark Mode Setting -->
-    <LinearLayout
+    <RelativeLayout
         android:id="@+id/darkModeSetting"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -131,21 +163,36 @@
         android:background="?android:attr/selectableItemBackground"
         android:clickable="true"
         android:focusable="true"
-        android:orientation="vertical"
         android:padding="8dp">
 
-        <TextView
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Dark Mode"
-            android:textSize="16sp" />
+            android:layout_alignParentStart="true"
+            android:layout_centerVertical="true"
+            android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/darkModeSummary"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textAppearance="?android:attr/textAppearanceListItemSecondary"
-            tools:text="System Default" />
-    </LinearLayout>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Dark Mode"
+                android:textSize="22sp" />
+
+            <TextView
+                android:id="@+id/darkModeSummary"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="?android:attr/textAppearanceListItemSecondary"
+                tools:text="System Default" />
+        </LinearLayout>
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:src="@drawable/ic_chevron_right"
+            app:tint="?android:attr/textColorSecondary" />
+    </RelativeLayout>
 
 </LinearLayout>

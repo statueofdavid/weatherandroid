@@ -69,17 +69,13 @@
     </LinearLayout>
 
     <!-- 2. DETAIL CARD (OVERLAY) -->
-    <!--
-      Increased elevation and added a stroke for more visual depth.
-      Using MaterialCardView for better styling support.
-    -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/detailCard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
         android:layout_margin="16dp"
-        android:minHeight="280dp"
+        android:minHeight="240dp"
         android:visibility="gone"
         app:cardCornerRadius="16dp"
         app:cardElevation="16dp"
@@ -93,21 +89,32 @@
 
             <ProgressBar
                 android:id="@+id/detailProgressBar"
-                style="?android:attr/progressBarStyle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
-                android:padding="48dp"
                 android:visibility="gone" />
 
+            <TextView
+                android:id="@+id/detailErrorTextView"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:padding="24dp"
+                android:textAlignment="center"
+                android:textSize="18sp"
+                android:visibility="gone"
+                tools:text="No tide data available for this station." />
+
+            <!-- This layout holds all the detail content -->
             <LinearLayout
                 android:id="@+id/detailContentLayout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:padding="16dp"
-                android:visibility="visible">
+                android:visibility="gone">
 
+                <!-- Tide Data Container -->
                 <LinearLayout
                     android:id="@+id/tideDataContainer"
                     android:layout_width="match_parent"
@@ -133,6 +140,7 @@
                         tools:text="High Tide: 6:30 AM (9.8 ft)\nLow Tide: 12:45 PM (1.2 ft)" />
                 </LinearLayout>
 
+                <!-- River/Lake Data Container -->
                 <LinearLayout
                     android:id="@+id/riverDataContainer"
                     android:layout_width="match_parent"
@@ -155,6 +163,8 @@
                         android:textSize="18sp"
                         tools:text="Gauge height: 3.45 ft" />
                 </LinearLayout>
+
+                <!-- FIX: The spacer View with layout_weight="1" has been removed. -->
 
                 <Button
                     android:id="@+id/closeDetailButton"

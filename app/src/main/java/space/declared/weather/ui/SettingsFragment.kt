@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.RelativeLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -20,26 +21,28 @@ import androidx.preference.PreferenceManager
 import kotlinx.coroutines.launch
 import space.declared.weather.R
 
+/**
+ * This Fragment uses a custom layout with clickable rows that show dialogs.
+ */
 class SettingsFragment : Fragment() {
 
     private val viewModel: MainViewModel by activityViewModels()
     private lateinit var sharedPreferences: SharedPreferences
 
-    // UI Views
+    // UI Views - Updated for clickable rows
     private lateinit var syncStatusContainer: LinearLayout
-    private lateinit var unitsSetting: LinearLayout
-    private lateinit var unitsSummary: TextView
-    private lateinit var radiusSetting: LinearLayout
-    private lateinit var radiusSummary: TextView
-    private lateinit var darkModeSetting: LinearLayout
-    private lateinit var darkModeSummary: TextView
     private lateinit var syncNowButton: Button
+    private lateinit var unitsSetting: RelativeLayout
+    private lateinit var unitsSummary: TextView
+    private lateinit var radiusSetting: RelativeLayout
+    private lateinit var radiusSummary: TextView
+    private lateinit var darkModeSetting: RelativeLayout
+    private lateinit var darkModeSummary: TextView
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        // Inflate the custom layout from the Canvas
         return inflater.inflate(R.layout.fragment_settings, container, false)
     }
 
@@ -47,20 +50,20 @@ class SettingsFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         sharedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
         initializeViews(view)
-        setupClickListeners()
+        setupClickListeners() // Reverted from setupSpinners
         setupObservers()
-        updateAllSummaries()
+        updateAllSummaries() // Re-added to display initial values
     }
 
     private fun initializeViews(view: View) {
         syncStatusContainer = view.findViewById(R.id.syncStatusContainer)
+        syncNowButton = view.findViewById(R.id.syncNowButton)
         unitsSetting = view.findViewById(R.id.unitsSetting)
         unitsSummary = view.findViewById(R.id.unitsSummary)
         radiusSetting = view.findViewById(R.id.radiusSetting)
         radiusSummary = view.findViewById(R.id.radiusSummary)
         darkModeSetting = view.findViewById(R.id.darkModeSetting)
         darkModeSummary = view.findViewById(R.id.darkModeSummary)
-        syncNowButton = view.findViewById(R.id.syncNowButton)
     }
 
     private fun setupClickListeners() {

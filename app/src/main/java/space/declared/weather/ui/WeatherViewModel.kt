@@ -2,14 +2,18 @@ package space.declared.weather.ui
 
 import android.app.Application
 import android.location.Location
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.preference.PreferenceManager
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
@@ -18,6 +22,8 @@ import space.declared.weather.data.DailyForecast
 import space.declared.weather.data.WaterData
 import space.declared.weather.data.WeatherRepository
 import space.declared.weather.data.local.AppDatabase
+import space.declared.weather.data.local.SavedLocationEntity
+import space.declared.weather.data.local.StationEntity
 import space.declared.weather.data.local.StationLocalDataSource
 import space.declared.weather.data.source.NoaaRemoteDataSource
 import space.declared.weather.data.source.OpenMeteoRemoteDataSource
@@ -49,6 +55,15 @@ data class DetailedDayWeather(
     val windGusts: String?
 )
 
+data class SavedLocation(
+    val id: Int,
+    val name: String,
+    val latitude: Double,
+    val longitude: Double,
+    val timestamp: Long,
+    val isCurrentLocation: Boolean
+)
+
 enum class SortType {
     NONE,
     BY_NAME,
@@ -66,7 +81,9 @@ data class WeatherUiState(
     val stationListItems: List<StationListItem> = emptyList(),
     val selectedDayWeather: DetailedDayWeather? = null,
     val selectedStationDetails: WaterData? = null,
-    val stationSortType: SortType = SortType.BY_DISTANCE
+    val stationSortType: SortType = SortType.BY_DISTANCE,
+    val savedLocations: List<SavedLocation> = emptyList(),
+    val unitSystem: String = "imperial"
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -75,7 +92,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(application)
 
     private val _uiState = MutableStateFlow(WeatherUiState())
-    val uiState: StateFlow<WeatherUiState> = _uiState.asStateFlow()
+    var uiState: StateFlow<WeatherUiState> = _uiState.asStateFlow()
 
     private var lastFullResponse: JSONObject? = null
     private var lastUserLocation: Location? = null
@@ -87,19 +104,72 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val openMeteoDataSource = OpenMeteoRemoteDataSource(application)
         val noaaDataSource = NoaaRemoteDataSource(application)
         val usgsDataSource = UsgsRemoteDataSource(application)
-        // Pass the application context to the repository for SharedPreferences
-        repository = WeatherRepository(application, openMeteoDataSource, noaaDataSource, usgsDataSource, localDataSource)
 
-        // NEW: Launch a coroutine to observe the sync status from the repository.
-        // This will keep the UI state in sync with the repository's background work.
+        // Pass the application context to the repository for SharedPreferences
+        repository = WeatherRepository(
+            application,
+            openMeteoDataSource,
+            noaaDataSource,
+            usgsDataSource,
+            localDataSource,
+            database.savedLocationDao()
+        )
+
+        // keeps the UI state in sync with the repository's background work.
         viewModelScope.launch {
             repository.isSyncing.collect { syncingStatus ->
                 _uiState.update { it.copy(isSyncing = syncingStatus) }
             }
         }
+
+        viewModelScope.launch {
+            // Collect saved locations and update the UI state
+            repository.savedLocations
+                .map { entities ->
+                    // Transform database entities into the UI model
+                    entities.map { entity ->
+                        SavedLocation(
+                            entity.id,
+                            entity.name,
+                            entity.latitude,
+                            entity.longitude,
+                            entity.timestamp,
+                            entity.isCurrentLocation
+                        )
+                    }
+                }
+        }
+        val savedLocationsFlow: StateFlow<List<SavedLocation>> =
+            repository.savedLocations.map { entities ->
+                entities.map { entity ->
+                    SavedLocation(
+                        entity.id,
+                        entity.name,
+                        entity.latitude,
+                        entity.longitude,
+                        entity.timestamp,
+                        entity.isCurrentLocation
+                    )
+                }
+            }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5000),
+                initialValue = emptyList() // Set an initial value to prevent a null state
+            )
+
+        viewModelScope.launch {
+            savedLocationsFlow.collect { locations ->
+                // Update the _uiState with the new list of locations
+                _uiState.update { it.copy(savedLocations = locations) }
+            }
+        }
     }
 
     // --- PUBLIC FUNCTIONS (Called from the UI) ---
+    fun clearError() {
+        _uiState.update { it.copy(error = null) }
+    }
 
     fun triggerStationSync() {
         repository.triggerStationSync()
@@ -124,10 +194,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun fetchInitialData(latitude: Double, longitude: Double, name: String) {
+        val units = sharedPreferences.getString("units", "imperial") ?: "imperial"
+
+        _uiState.update { it.copy(isLoading = true, error = null, unitSystem = units) }
         _uiState.update { it.copy(isLoading = true, error = null) }
+
         lastUserLocation = Location("").apply {
             this.latitude = latitude
             this.longitude = longitude
+        }
+
+        viewModelScope.launch {
+            val timestamp = System.currentTimeMillis()
+            saveLocation(name, latitude, longitude, timestamp)
         }
 
         viewModelScope.launch {
@@ -209,6 +288,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(cityList = emptyList()) }
     }
 
+    fun saveLocation(name: String, latitude: Double, longitude: Double, timestemp: Long) {
+        Log.d("ViewModel_Call", "Received request to save location: $name")
+        viewModelScope.launch {
+            repository.saveLocation(
+                SavedLocationEntity(
+                    name = name,
+                    latitude = latitude,
+                    longitude = longitude,
+                    timestamp = timestemp)
+            )
+        }
+    }
+
+    fun deleteLocation(location: SavedLocation) {
+        viewModelScope.launch {
+            repository.deleteLocation(
+                SavedLocationEntity(
+                    location.id,
+                    location.name,
+                    location.latitude,
+                    location.longitude,
+                    location.timestamp,
+                    location.isCurrentLocation)
+            )
+        }
+    }
+
     // --- PRIVATE HELPER FUNCTIONS ---
 
     private suspend fun fetchWeatherSuspend(latitude: Double, longitude: Double): List<DailyForecast> {
@@ -238,8 +344,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 this.latitude = entity.latitude
                 this.longitude = entity.longitude
             }
-            val distance = lastUserLocation?.distanceTo(stationLocation)?.times(0.000621371f) ?: 0f
-            StationListItem(entity, distance)
+            val distanceInMeters = lastUserLocation?.distanceTo(stationLocation) ?: 0f
+            StationListItem(entity, distanceInMeters)
         }
         originalStationList = stationItems
         return stationItems
@@ -248,7 +354,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun processStationList(list: List<StationListItem>, sortType: SortType): List<StationListItem> {
         return when (sortType) {
             SortType.BY_NAME -> list.sortedBy { it.entity.name }
-            SortType.BY_DISTANCE -> list.sortedBy { it.distance }
+            SortType.BY_DISTANCE -> list.sortedBy { it.distanceInMeters }
             SortType.NONE -> list
         }
     }
