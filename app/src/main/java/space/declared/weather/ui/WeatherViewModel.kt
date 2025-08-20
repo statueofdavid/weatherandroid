@@ -167,6 +167,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // --- PUBLIC FUNCTIONS (Called from the UI) ---
+    fun clearError() {
+        _uiState.update { it.copy(error = null) }
+    }
 
     fun triggerStationSync() {
         repository.triggerStationSync()

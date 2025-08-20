@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AnimationUtils
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -48,6 +49,7 @@ class WaterLevelFragment : Fragment() {
     private lateinit var detailProgressBar: ProgressBar
     private lateinit var detailContentLayout: LinearLayout
     private lateinit var closeDetailButton: Button
+    private lateinit var detailErrorTextView: TextView
 
     // --- Detail Content Views ---
     private lateinit var tideDataContainer: LinearLayout
@@ -87,6 +89,7 @@ class WaterLevelFragment : Fragment() {
         detailProgressBar = view.findViewById(R.id.detailProgressBar)
         detailContentLayout = view.findViewById(R.id.detailContentLayout)
         closeDetailButton = view.findViewById(R.id.closeDetailButton)
+        detailErrorTextView = view.findViewById(R.id.detailErrorTextView)
 
         // Specific Detail Content Views
         tideDataContainer = view.findViewById(R.id.tideDataContainer)
@@ -108,7 +111,6 @@ class WaterLevelFragment : Fragment() {
     private fun setupClickListeners() {
         sortByDistanceButton.setOnClickListener { viewModel.onSortStationsByDistance() }
         sortByNameButton.setOnClickListener { viewModel.onSortStationsByName() }
-        // Correctly call the ViewModel function to handle closing the card
         closeDetailButton.setOnClickListener { viewModel.onDetailCardClosed() }
     }
 
@@ -126,16 +128,31 @@ class WaterLevelFragment : Fragment() {
                     sortControlsContainer.visibility = if (isListEmpty) View.GONE else View.VISIBLE
                     stationRecyclerView.visibility = if (isListEmpty) View.GONE else View.VISIBLE
 
+                    val controller = AnimationUtils.loadLayoutAnimation(requireContext(), R.anim.layout_animation_fall_down)
+                    stationRecyclerView.layoutAnimation = controller
+                    stationRecyclerView.scheduleLayoutAnimation()
+
                     // --- Handle Detail Card Display ---
                     if (state.isFetchingDetails) {
                         detailCard.visibility = View.VISIBLE
                         detailProgressBar.visibility = View.VISIBLE
                         detailContentLayout.visibility = View.GONE
+                        detailErrorTextView.visibility = View.GONE
                     } else if (state.selectedStationDetails != null) {
                         detailCard.visibility = View.VISIBLE
                         detailProgressBar.visibility = View.GONE
                         detailContentLayout.visibility = View.VISIBLE
+                        detailErrorTextView.visibility = View.GONE
                         populateDetailCard(state.selectedStationDetails)
+                    } else if (state.error != null) {
+                        // Handle the error state
+                        detailCard.visibility = View.VISIBLE
+                        detailProgressBar.visibility = View.GONE
+                        detailContentLayout.visibility = View.GONE
+                        detailErrorTextView.visibility = View.VISIBLE
+                        detailErrorTextView.text = state.error
+                        // Clear the error so it doesn't show again on rotation
+                        viewModel.clearError()
                     } else {
                         detailCard.visibility = View.GONE
                     }

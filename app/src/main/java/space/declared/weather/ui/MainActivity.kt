@@ -66,6 +66,8 @@ class MainActivity : AppCompatActivity() {
                     return@setOnItemSelectedListener false
                 }
                 else -> {
+                    // FIX: Close the details card when navigating away
+                    viewModel.onDetailCardClosed()
                     // For all other items, close the drawer and navigate
                     drawerLayout.closeDrawer(GravityCompat.START)
                     return@setOnItemSelectedListener NavigationUI.onNavDestinationSelected(item, navController)
@@ -86,6 +88,8 @@ class MainActivity : AppCompatActivity() {
         // Create and configure the adapter that handles clicks
         savedLocationsAdapter = SavedLocationsAdapter(
             onLocationClicked = { location ->
+                // ADDED: Close the details card to prevent showing stale data.
+                viewModel.onDetailCardClosed()
                 viewModel.fetchInitialData(location.latitude, location.longitude, location.name)
                 drawerLayout.closeDrawer(GravityCompat.START)
             },

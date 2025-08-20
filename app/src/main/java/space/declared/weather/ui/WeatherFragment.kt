@@ -12,6 +12,7 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AnimationUtils
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
@@ -203,6 +204,9 @@ class WeatherFragment : Fragment() {
 
                     // --- Detailed Daily Weather ---
                     state.selectedDayWeather?.let { details ->
+                        val animation = AnimationUtils.loadAnimation(requireContext(), R.anim.item_animation_fall_down)
+                        weatherDataContainer.startAnimation(animation)
+
                         temperature.text = "${details.tempMax} / ${details.tempMin}"
                         weatherDescription.text = details.weatherDescription
                         uvIndex.text = details.uvIndex
