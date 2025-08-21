@@ -74,6 +74,7 @@ class WeatherFragment : Fragment() {
     private lateinit var temperature: TextView
     private lateinit var uvIndex: TextView
     private lateinit var weatherDataContainer: LinearLayout
+    private lateinit var dailyDetailsContainer: LinearLayout
 
     private lateinit var weatherDescription: TextView
     private lateinit var wind: TextView
@@ -125,6 +126,7 @@ class WeatherFragment : Fragment() {
     private fun initializeViews(view: View) {
         progressBar = view.findViewById(R.id.progressBar)
         weatherDataContainer = view.findViewById(R.id.weatherDataContainer)
+        dailyDetailsContainer = view.findViewById(R.id.dailyDetailsContainer)
         citySearch = view.findViewById(R.id.citySearch)
         citySearchRecyclerView = view.findViewById(R.id.citySearchRecyclerView)
         citySearchCardContainer = view.findViewById(R.id.citySearchCardContainer)
@@ -205,7 +207,7 @@ class WeatherFragment : Fragment() {
                     // --- Detailed Daily Weather ---
                     state.selectedDayWeather?.let { details ->
                         val animation = AnimationUtils.loadAnimation(requireContext(), R.anim.item_animation_fall_down)
-                        weatherDataContainer.startAnimation(animation)
+                        dailyDetailsContainer.startAnimation(animation)
 
                         temperature.text = "${details.tempMax} / ${details.tempMin}"
                         weatherDescription.text = details.weatherDescription
