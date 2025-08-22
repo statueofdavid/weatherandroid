@@ -70,6 +70,108 @@
             android:layout_marginTop="24dp"
             android:visibility="gone" />
 
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/sunMoonCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="4dp">
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="16dp">
+
+                <!-- UV Index (Centered above horizon) -->
+                <TextView
+                    android:id="@+id/uvIndex"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:textSize="16sp"
+                    app:layout_constraintBottom_toTopOf="@id/sunPathArc"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    tools:text="UV Index: 3 (Moderate)" />
+
+                <!-- Sun Path Visual (The Horizon) -->
+                <View
+                    android:id="@+id/sunPathArc"
+                    android:layout_width="0dp"
+                    android:layout_height="100dp"
+                    android:background="@drawable/sun_path_arc"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
+
+                <ImageView
+                    android:id="@+id/sunIcon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:src="@drawable/ic_sun"
+                    app:layout_constraintBottom_toTopOf="@id/sunPathArc"
+                    app:layout_constraintEnd_toEndOf="@id/sunPathArc"
+                    app:layout_constraintHorizontal_bias="0.5"
+                    app:layout_constraintStart_toStartOf="@id/sunPathArc"
+                    app:layout_constraintTop_toTopOf="@id/sunPathArc"
+                    app:layout_constraintVertical_bias="0.9" />
+
+                <!-- Sunrise Info -->
+                <TextView
+                    android:id="@+id/sunriseLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Sunrise"
+                    app:layout_constraintBottom_toTopOf="@id/sunriseTime"
+                    app:layout_constraintStart_toStartOf="@id/sunPathArc" />
+
+                <TextView
+                    android:id="@+id/sunriseTime"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    app:layout_constraintBottom_toBottomOf="@id/sunPathArc"
+                    app:layout_constraintStart_toStartOf="@id/sunPathArc"
+                    tools:text="6:30 AM" />
+
+                <!-- Sunset Info -->
+                <TextView
+                    android:id="@+id/sunsetLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Sunset"
+                    app:layout_constraintBottom_toTopOf="@id/sunsetTime"
+                    app:layout_constraintEnd_toEndOf="@id/sunPathArc" />
+
+                <TextView
+                    android:id="@+id/sunsetTime"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    app:layout_constraintBottom_toBottomOf="@id/sunPathArc"
+                    app:layout_constraintEnd_toEndOf="@id/sunPathArc"
+                    tools:text="7:45 PM" />
+
+                <!-- Moon Phase (Centered below horizon) -->
+                <TextView
+                    android:id="@+id/moonPhase"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textSize="16sp"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@id/sunPathArc"
+                    tools:text="Moon: 🌔 Waxing Gibbous" />
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
         <LinearLayout
             android:id="@+id/weatherDataContainer"
             android:layout_width="match_parent"
@@ -137,43 +239,43 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <androidx.cardview.widget.CardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_margin="8dp"
-                app:cardCornerRadius="8dp"
-                app:cardElevation="4dp">
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-                    <TextView
-                        android:id="@+id/uvIndex"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textSize="16sp"
-                        tools:text="UV Index: 5 (Moderate)" />
-                    <TextView
-                        android:id="@+id/sunrise"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textSize="16sp"
-                        tools:text="Sunrise: 06:00 AM" />
-                    <TextView
-                        android:id="@+id/sunset"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textSize="16sp"
-                        tools:text="Sunset: 08:30 PM" />
-                    <TextView
-                        android:id="@+id/daylight"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textSize="16sp"
-                        tools:text="Daylight: 14.5 hours" />
-                </LinearLayout>
-            </androidx.cardview.widget.CardView>
+<!--            <androidx.cardview.widget.CardView-->
+<!--                android:layout_width="match_parent"-->
+<!--                android:layout_height="wrap_content"-->
+<!--                android:layout_margin="8dp"-->
+<!--                app:cardCornerRadius="8dp"-->
+<!--                app:cardElevation="4dp">-->
+<!--                <LinearLayout-->
+<!--                    android:layout_width="match_parent"-->
+<!--                    android:layout_height="wrap_content"-->
+<!--                    android:orientation="vertical"-->
+<!--                    android:padding="16dp">-->
+<!--                    <TextView-->
+<!--                        android:id="@+id/uvIndex"-->
+<!--                        android:layout_width="wrap_content"-->
+<!--                        android:layout_height="wrap_content"-->
+<!--                        android:textSize="16sp"-->
+<!--                        tools:text="UV Index: 5 (Moderate)" />-->
+<!--                    <TextView-->
+<!--                        android:id="@+id/sunrise"-->
+<!--                        android:layout_width="wrap_content"-->
+<!--                        android:layout_height="wrap_content"-->
+<!--                        android:textSize="16sp"-->
+<!--                        tools:text="Sunrise: 06:00 AM" />-->
+<!--                    <TextView-->
+<!--                        android:id="@+id/sunset"-->
+<!--                        android:layout_width="wrap_content"-->
+<!--                        android:layout_height="wrap_content"-->
+<!--                        android:textSize="16sp"-->
+<!--                        tools:text="Sunset: 08:30 PM" />-->
+<!--                    <TextView-->
+<!--                        android:id="@+id/daylight"-->
+<!--                        android:layout_width="wrap_content"-->
+<!--                        android:layout_height="wrap_content"-->
+<!--                        android:textSize="16sp"-->
+<!--                        tools:text="Daylight: 14.5 hours" />-->
+<!--                </LinearLayout>-->
+<!--            </androidx.cardview.widget.CardView>-->
 
             <androidx.cardview.widget.CardView
                 android:layout_width="match_parent"
