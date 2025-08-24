@@ -136,8 +136,8 @@ class WeatherFragment : Fragment() {
         temperature = view.findViewById(R.id.temperature)
         weatherDescription = view.findViewById(R.id.weatherDescription)
         uvIndex = view.findViewById(R.id.uvIndex)
-//        sunrise = view.findViewById(R.id.sunrise)
-//        sunset = view.findViewById(R.id.sunset)
+        sunrise = view.findViewById(R.id.sunriseTime)
+        sunset = view.findViewById(R.id.sunsetTime)
 //        daylight = view.findViewById(R.id.daylight)
         pressure = view.findViewById(R.id.pressure)
         humidity = view.findViewById(R.id.humidity)
@@ -211,9 +211,9 @@ class WeatherFragment : Fragment() {
 
                         temperature.text = "${details.tempMax} / ${details.tempMin}"
                         weatherDescription.text = details.weatherDescription
-//                        uvIndex.text = details.uvIndex
-//                        sunrise.text = details.sunrise
-//                        sunset.text = details.sunset
+                       uvIndex.text = details.uvIndex
+                        sunrise.text = details.sunrise
+                        sunset.text = details.sunset
 //                        daylight.text = details.daylight
                         pressure.text = details.pressure ?: "Pressure: N/A"
                         humidity.text = details.humidity ?: "Humidity: N/A"
