@@ -35,7 +35,8 @@ class UsnoMoonDataSource(context: Context) {
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val dateString = dateFormat.format(date)
 
-        val url = "https://aa.usno.navy.mil/api/rstt/oneday?date=$dateString&coords=$latitude,$longitude"
+        // UPDATED: Added the optional 'id' parameter as recommended by the USNO API docs.
+        val url = "https://aa.usno.navy.mil/api/rstt/oneday?date=$dateString&coords=$latitude,$longitude&id=declared-space-weather"
         Log.d(TAG, "Fetching moon phase from URL: $url")
 
         return suspendCancellableCoroutine { continuation ->
