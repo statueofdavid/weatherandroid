@@ -33,7 +33,7 @@ import java.util.Locale
 class WaterLevelFragment : Fragment() {
 
     // Correctly reference WeatherViewModel
-    private val viewModel: MainViewModel by activityViewModels()
+    private val viewModel: WeatherViewModel by activityViewModels()
 
     // --- List UI Elements ---
     private lateinit var listProgressBar: ProgressBar

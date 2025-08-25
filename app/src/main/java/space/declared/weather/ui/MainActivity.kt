@@ -23,7 +23,7 @@ import space.declared.weather.R
 class MainActivity : AppCompatActivity() {
 
     // Use the correct WeatherViewModel
-    private val viewModel: MainViewModel by viewModels()
+    private val viewModel: WeatherViewModel by viewModels()
 
     private lateinit var drawerLayout: DrawerLayout
     private lateinit var navController: NavController

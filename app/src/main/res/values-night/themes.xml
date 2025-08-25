@@ -3,6 +3,8 @@
     <!-- Changed parent to a NoActionBar theme -->
     <style name="Base.Theme.WeatherApp" parent="Theme.Material3.DayNight.NoActionBar">
         <!-- Customize your dark theme here. -->
+        <!-- For Dark Mode -->
+        <item name="sunColor">#FFEB3B</item> <!-- Yellow -->
         <!-- <item name="colorPrimary">@color/my_dark_primary</item> -->
     </style>
 

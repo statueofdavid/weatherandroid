@@ -15,7 +15,7 @@
         android:orientation="vertical"
         android:paddingBottom="80dp">
 
-        <!-- Search and City Search Results (Unchanged) -->
+        <!-- Your Search and Main Weather Cards (Unchanged) -->
         <LinearLayout
             android:id="@+id/searchContainer"
             android:layout_width="match_parent"
@@ -43,7 +43,7 @@
 
         </LinearLayout>
 
-        <androidx.cardview.widget.CardView
+        <com.google.android.material.card.MaterialCardView
             android:id="@+id/citySearchCardContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -60,7 +60,7 @@
                 app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
                 tools:listitem="@layout/city_list_item" />
 
-        </androidx.cardview.widget.CardView>
+        </com.google.android.material.card.MaterialCardView>
 
         <ProgressBar
             android:id="@+id/progressBar"
@@ -79,7 +79,7 @@
             android:orientation="vertical"
             android:visibility="visible">
 
-            <androidx.cardview.widget.CardView
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_margin="8dp"
@@ -92,9 +92,9 @@
                     android:layout_height="wrap_content"
                     app:tabMode="scrollable" />
 
-            </androidx.cardview.widget.CardView>
+            </com.google.android.material.card.MaterialCardView>
 
-            <androidx.cardview.widget.CardView
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_margin="8dp"
@@ -130,7 +130,7 @@
                         android:textSize="20sp"
                         tools:text="Weather Description" />
                 </LinearLayout>
-            </androidx.cardview.widget.CardView>
+            </com.google.android.material.card.MaterialCardView>
 
             <!-- Sun & Moon Card -->
             <com.google.android.material.card.MaterialCardView
@@ -145,6 +145,19 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:padding="16dp">
+
+                    <!-- Sun Icon (Now constrained to the top and bottom of the arc) -->
+                    <ImageView
+                        android:id="@+id/sunIcon"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:src="@drawable/ic_sun"
+                        app:layout_constraintTop_toTopOf="@id/celestialArc"
+                        app:layout_constraintBottom_toBottomOf="@id/celestialArc"
+                        app:layout_constraintStart_toStartOf="@id/celestialArc"
+                        app:layout_constraintEnd_toEndOf="@id/celestialArc"
+                        app:layout_constraintHorizontal_bias="0.5"
+                        app:layout_constraintVertical_bias="0.5" />
 
                     <!-- UV Index -->
                     <TextView
@@ -212,7 +225,7 @@
 
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- RE-ADDED: Container for the bottom two cards -->
+            <!-- Container for the bottom two cards -->
             <LinearLayout
                 android:id="@+id/dailyDetailsContainer"
                 android:layout_width="match_parent"
@@ -220,7 +233,7 @@
                 android:orientation="vertical">
 
                 <!-- Card for Pressure, Humidity, etc. -->
-                <androidx.cardview.widget.CardView
+                <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_margin="8dp"
@@ -256,34 +269,34 @@
                             android:textSize="16sp"
                             tools:text="Cloud Cover: 30%" />
                     </LinearLayout>
-                </androidx.cardview.widget.CardView>
+                </com.google.android.material.card.MaterialCardView>
 
                 <!-- Card for Wind and Gusts -->
-                <androidx.cardview.widget.CardView
+                <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_margin="8dp"
                     app:cardCornerRadius="8dp"
                     app:cardElevation="4dp">
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-                    <TextView
-                        android:id="@+id/wind"
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:textSize="16sp"
-                        tools:text="Wind: SW at 15 km/h" />
-                    <TextView
-                        android:id="@+id/windGusts"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textSize="16sp"
-                        tools:text="Gusts: 30 km/h" />
-                </LinearLayout>
-                </androidx.cardview.widget.CardView>
+                        android:orientation="vertical"
+                        android:padding="16dp">
+                        <TextView
+                            android:id="@+id/wind"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="16sp"
+                            tools:text="Wind: SW at 15 km/h" />
+                        <TextView
+                            android:id="@+id/windGusts"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="16sp"
+                            tools:text="Gusts: 30 km/h" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>
