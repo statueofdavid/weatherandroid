@@ -6,31 +6,35 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.preference.PreferenceManager
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
 import space.declared.weather.data.CityResult
 import space.declared.weather.data.DailyForecast
+import space.declared.weather.data.MoonData
 import space.declared.weather.data.WaterData
 import space.declared.weather.data.WeatherRepository
 import space.declared.weather.data.local.AppDatabase
 import space.declared.weather.data.local.SavedLocationEntity
-import space.declared.weather.data.local.StationEntity
 import space.declared.weather.data.local.StationLocalDataSource
 import space.declared.weather.data.source.NoaaRemoteDataSource
 import space.declared.weather.data.source.OpenMeteoRemoteDataSource
+import space.declared.weather.data.source.UsnoMoonDataSource
 import space.declared.weather.data.source.UsgsRemoteDataSource
 import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
+import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.math.floor
@@ -52,7 +56,9 @@ data class DetailedDayWeather(
     val precipitationChance: String?,
     val cloudCover: String?,
     val wind: String?,
-    val windGusts: String?
+    val windGusts: String?,
+    val rawSunrise: String,
+    val rawSunset: String
 )
 
 data class SavedLocation(
@@ -61,6 +67,7 @@ data class SavedLocation(
     val latitude: Double,
     val longitude: Double,
     val timestamp: Long,
+    val timezone: String?,
     val isCurrentLocation: Boolean
 )
 
@@ -73,7 +80,7 @@ enum class SortType {
 data class WeatherUiState(
     val isLoading: Boolean = false,
     val isFetchingDetails: Boolean = false,
-    val isSyncing: Boolean = false, // New property to track background sync
+    val isSyncing: Boolean = false,
     val error: String? = null,
     val cityName: String? = null,
     val fullForecast: List<DailyForecast> = emptyList(),
@@ -83,16 +90,21 @@ data class WeatherUiState(
     val selectedStationDetails: WaterData? = null,
     val stationSortType: SortType = SortType.BY_DISTANCE,
     val savedLocations: List<SavedLocation> = emptyList(),
-    val unitSystem: String = "imperial"
+    val unitSystem: String = "imperial",
+    val sunPositionBias: Float = 0.5f,
+    val timezone: String? = null,
+    val moonData: MoonData? = null
 )
 
-class MainViewModel(application: Application) : AndroidViewModel(application) {
+class WeatherViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: WeatherRepository
     private val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(application)
 
     private val _uiState = MutableStateFlow(WeatherUiState())
-    var uiState: StateFlow<WeatherUiState> = _uiState.asStateFlow()
+    val uiState: StateFlow<WeatherUiState> = _uiState.asStateFlow()
+
+    private var sunPositionUpdaterJob: Job? = null
 
     private var lastFullResponse: JSONObject? = null
     private var lastUserLocation: Location? = null
@@ -104,65 +116,78 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val openMeteoDataSource = OpenMeteoRemoteDataSource(application)
         val noaaDataSource = NoaaRemoteDataSource(application)
         val usgsDataSource = UsgsRemoteDataSource(application)
+        val moonDataSource = UsnoMoonDataSource(application)
 
-        // Pass the application context to the repository for SharedPreferences
         repository = WeatherRepository(
             application,
             openMeteoDataSource,
             noaaDataSource,
             usgsDataSource,
+            moonDataSource,
             localDataSource,
             database.savedLocationDao()
         )
 
-        // keeps the UI state in sync with the repository's background work.
         viewModelScope.launch {
-            repository.isSyncing.collect { syncingStatus ->
-                _uiState.update { it.copy(isSyncing = syncingStatus) }
-            }
-        }
-
-        viewModelScope.launch {
-            // Collect saved locations and update the UI state
-            repository.savedLocations
-                .map { entities ->
-                    // Transform database entities into the UI model
-                    entities.map { entity ->
-                        SavedLocation(
-                            entity.id,
-                            entity.name,
-                            entity.latitude,
-                            entity.longitude,
-                            entity.timestamp,
-                            entity.isCurrentLocation
-                        )
-                    }
-                }
-        }
-        val savedLocationsFlow: StateFlow<List<SavedLocation>> =
-            repository.savedLocations.map { entities ->
-                entities.map { entity ->
+            combine(
+                repository.isSyncing,
+                repository.savedLocations
+            ) { isSyncing, savedLocationEntities ->
+                val savedLocations = savedLocationEntities.map { entity ->
                     SavedLocation(
                         entity.id,
                         entity.name,
                         entity.latitude,
                         entity.longitude,
                         entity.timestamp,
+                        entity.timezone,
                         entity.isCurrentLocation
                     )
                 }
-            }
-            .stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5000),
-                initialValue = emptyList() // Set an initial value to prevent a null state
-            )
+                _uiState.update { it.copy(isSyncing = isSyncing, savedLocations = savedLocations) }
+            }.collect {}
+        }
 
-        viewModelScope.launch {
-            savedLocationsFlow.collect { locations ->
-                // Update the _uiState with the new list of locations
-                _uiState.update { it.copy(savedLocations = locations) }
+        startSunPositionUpdater()
+    }
+
+    private fun startSunPositionUpdater() {
+        sunPositionUpdaterJob?.cancel()
+        sunPositionUpdaterJob = viewModelScope.launch {
+            while (true) {
+                updateSunPosition()
+                delay(TimeUnit.MINUTES.toMillis(15))
             }
+        }
+    }
+
+    private fun updateSunPosition() {
+        val rawSunriseStr = _uiState.value.selectedDayWeather?.rawSunrise ?: return
+        val rawSunsetStr = _uiState.value.selectedDayWeather?.rawSunset ?: return
+        val timezoneId = _uiState.value.timezone ?: return
+
+        try {
+            val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm", Locale.getDefault())
+            isoFormat.timeZone = TimeZone.getTimeZone(timezoneId)
+
+            val sunrise = isoFormat.parse(rawSunriseStr) ?: return
+            val sunset = isoFormat.parse(rawSunsetStr) ?: return
+
+            val locationTime = Calendar.getInstance(TimeZone.getTimeZone(timezoneId))
+
+            val daylightDuration = sunset.time - sunrise.time
+            if (daylightDuration <= 0) return
+
+            val timeSinceSunrise = locationTime.timeInMillis - sunrise.time
+            val progress = (timeSinceSunrise.toFloat() / daylightDuration.toFloat())
+
+            // ADDED: Log the calculated progress
+            Log.d("ViewModel_Sun", "Calculated sun position progress: $progress")
+
+            _uiState.update { it.copy(sunPositionBias = progress) }
+
+        } catch (e: Exception) {
+            Log.e("WeatherViewModel", "Error updating sun position", e)
         }
     }
 
@@ -195,9 +220,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun fetchInitialData(latitude: Double, longitude: Double, name: String) {
         val units = sharedPreferences.getString("units", "imperial") ?: "imperial"
-
         _uiState.update { it.copy(isLoading = true, error = null, unitSystem = units) }
-        _uiState.update { it.copy(isLoading = true, error = null) }
 
         lastUserLocation = Location("").apply {
             this.latitude = latitude
@@ -205,27 +228,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
-            val timestamp = System.currentTimeMillis()
-            saveLocation(name, latitude, longitude, timestamp)
-        }
-
-        viewModelScope.launch {
             try {
                 val weatherDataDeferred = async { fetchWeatherSuspend(latitude, longitude) }
                 val stationDataDeferred = async { fetchNearbyStationsSuspend(latitude, longitude) }
+                val moonDataDeferred = async { repository.fetchMoonData(Date(), latitude, longitude) }
 
-                val weatherResult = weatherDataDeferred.await()
+                val (forecastList, timezone) = weatherDataDeferred.await()
                 val stationItems = stationDataDeferred.await()
+                val moonData = moonDataDeferred.await()
+
+                val timestamp = System.currentTimeMillis()
+                saveLocation(name, latitude, longitude, timestamp, timezone)
 
                 _uiState.update {
                     it.copy(
                         isLoading = false,
                         cityName = name,
-                        fullForecast = weatherResult,
-                        selectedDayWeather = if (weatherResult.isNotEmpty()) createDetailedWeatherForDay(weatherResult[0], 0) else null,
-                        stationListItems = processStationList(stationItems, it.stationSortType)
+                        fullForecast = forecastList,
+                        selectedDayWeather = if (forecastList.isNotEmpty()) createDetailedWeatherForDay(forecastList[0], 0) else null,
+                        stationListItems = processStationList(stationItems, it.stationSortType),
+                        timezone = timezone,
+                        moonData = moonData
                     )
                 }
+                updateSunPosition()
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = e.message ?: "An unknown error occurred") }
             }
@@ -262,6 +288,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update {
             it.copy(selectedDayWeather = createDetailedWeatherForDay(selectedDay, index))
         }
+        if (index == 0) {
+            updateSunPosition()
+        } else {
+            _uiState.update { it.copy(sunPositionBias = 0.5f) }
+        }
     }
 
     fun onSortStationsByName() {
@@ -288,15 +319,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(cityList = emptyList()) }
     }
 
-    fun saveLocation(name: String, latitude: Double, longitude: Double, timestemp: Long) {
-        Log.d("ViewModel_Call", "Received request to save location: $name")
+    fun saveLocation(name: String, latitude: Double, longitude: Double, timestamp: Long, timezone: String?) {
         viewModelScope.launch {
             repository.saveLocation(
                 SavedLocationEntity(
                     name = name,
                     latitude = latitude,
                     longitude = longitude,
-                    timestamp = timestemp)
+                    timestamp = timestamp,
+                    timezone = timezone
+                )
             )
         }
     }
@@ -310,6 +342,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     location.latitude,
                     location.longitude,
                     location.timestamp,
+                    location.timezone,
                     location.isCurrentLocation)
             )
         }
@@ -317,14 +350,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // --- PRIVATE HELPER FUNCTIONS ---
 
-    private suspend fun fetchWeatherSuspend(latitude: Double, longitude: Double): List<DailyForecast> {
+    private suspend fun fetchWeatherSuspend(latitude: Double, longitude: Double): Pair<List<DailyForecast>, String?> {
         return suspendCancellableCoroutine { continuation ->
             val units = sharedPreferences.getString("units", "metric") ?: "metric"
             repository.fetchWeatherData(latitude, longitude, units, object : OpenMeteoRemoteDataSource.ApiCallback<JSONObject> {
                 override fun onSuccess(result: JSONObject) {
                     lastFullResponse = result
                     val forecast = parseFullForecast(result.getJSONObject("daily"))
-                    if (continuation.isActive) continuation.resume(forecast)
+                    val timezone = result.optString("timezone", null)
+                    if (continuation.isActive) continuation.resume(Pair(forecast, timezone))
                 }
 
                 override fun onError(error: String) {
@@ -412,7 +446,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             precipitationChance = precipChanceVal,
             cloudCover = cloudCoverVal,
             wind = windVal,
-            windGusts = windGustsVal
+            windGusts = windGustsVal,
+            rawSunrise = sunriseStr,
+            rawSunset = sunsetStr
         )
     }
 

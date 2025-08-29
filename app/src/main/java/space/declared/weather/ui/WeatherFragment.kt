@@ -1,5 +1,6 @@
 package space.declared.weather.ui
 
+import SavedLocationsAdapter
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -16,69 +17,59 @@ import android.view.animation.AnimationUtils
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
-import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.cardview.widget.CardView
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
-import androidx.drawerlayout.widget.DrawerLayout
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
-import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.gms.location.LocationServices
 import com.google.android.material.tabs.TabLayout
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.map
 import space.declared.weather.R
 import space.declared.weather.data.DailyForecast
 import java.text.SimpleDateFormat
 import java.util.Locale
+import kotlin.math.cos
+import kotlin.math.sin
 
 class WeatherFragment : Fragment() {
 
-    // Use the refactored WeatherViewModel
-    private val viewModel: MainViewModel by activityViewModels()
+    private val viewModel: WeatherViewModel by activityViewModels()
 
     // --- UI Elements ---
-    private lateinit var cityName: TextView
-    private lateinit var citySearchAdapter: CitySearchAdapter
-    private lateinit var citySearchCardContainer: CardView
-
-    private lateinit var citySearchRecyclerView: RecyclerView
-    private lateinit var citySearch: EditText
-    private lateinit var cloudCover: TextView
-
-    private lateinit var drawerLayout: DrawerLayout
-    private lateinit var drawerContainer: FrameLayout
-    private lateinit var daylight: TextView
-
-    private lateinit var forecastTabs: TabLayout
-    private lateinit var humidity: TextView
-    private lateinit var locationButton: Button
-
-    private lateinit var sunrise: TextView
-    private lateinit var sunset: TextView
-
-    private lateinit var precipitation: TextView
     private lateinit var progressBar: ProgressBar
-    private lateinit var pressure: TextView
-
-    private lateinit var temperature: TextView
-    private lateinit var uvIndex: TextView
     private lateinit var weatherDataContainer: LinearLayout
-    private lateinit var dailyDetailsContainer: LinearLayout
-
+    private lateinit var citySearch: EditText
+    private lateinit var locationButton: Button
+    private lateinit var forecastTabs: TabLayout
+    private lateinit var cityName: TextView
+    private lateinit var temperature: TextView
     private lateinit var weatherDescription: TextView
+    private lateinit var uvIndex: TextView
+    private lateinit var sunriseTime: TextView
+    private lateinit var sunsetTime: TextView
+    private lateinit var moonPhase: TextView
+    private lateinit var sunIcon: ImageView
+    private lateinit var pressure: TextView
+    private lateinit var humidity: TextView
+    private lateinit var precipitation: TextView
+    private lateinit var cloudCover: TextView
     private lateinit var wind: TextView
     private lateinit var windGusts: TextView
+    private lateinit var citySearchRecyclerView: RecyclerView
+    private lateinit var citySearchAdapter: CitySearchAdapter
+    private lateinit var citySearchCardContainer: CardView
+    private lateinit var dailyDetailsContainer: LinearLayout
 
     private val searchHandler = Handler(Looper.getMainLooper())
     private var searchRunnable: Runnable? = null
@@ -117,7 +108,6 @@ class WeatherFragment : Fragment() {
         setupSearch()
         setupObservers()
 
-        // Trigger initial data load if the ViewModel has no data yet
         if (viewModel.uiState.value.cityName == null && !viewModel.uiState.value.isLoading) {
             getCurrentLocationWeather()
         }
@@ -136,9 +126,10 @@ class WeatherFragment : Fragment() {
         temperature = view.findViewById(R.id.temperature)
         weatherDescription = view.findViewById(R.id.weatherDescription)
         uvIndex = view.findViewById(R.id.uvIndex)
-        sunrise = view.findViewById(R.id.sunrise)
-        sunset = view.findViewById(R.id.sunset)
-        daylight = view.findViewById(R.id.daylight)
+        sunriseTime = view.findViewById(R.id.sunriseTime)
+        sunsetTime = view.findViewById(R.id.sunsetTime)
+        moonPhase = view.findViewById(R.id.moonPhase)
+        sunIcon = view.findViewById(R.id.sunIcon)
         pressure = view.findViewById(R.id.pressure)
         humidity = view.findViewById(R.id.humidity)
         precipitation = view.findViewById(R.id.precipitation)
@@ -160,7 +151,7 @@ class WeatherFragment : Fragment() {
             imm.hideSoftInputFromWindow(view?.windowToken, 0)
             citySearch.clearFocus()
             citySearch.text.clear()
-            viewModel.onCitySelectionDialogShown() // Hides the search results
+            viewModel.onCitySelectionDialogShown()
         }
         citySearchRecyclerView.adapter = citySearchAdapter
 
@@ -173,9 +164,9 @@ class WeatherFragment : Fragment() {
                 val query = s.toString().trim()
                 if (query.length > 2) {
                     searchRunnable = Runnable { viewModel.onCitySearch(query) }
-                    searchHandler.postDelayed(searchRunnable!!, 500L) // 500ms debounce
+                    searchHandler.postDelayed(searchRunnable!!, 500L)
                 } else {
-                    viewModel.onCitySelectionDialogShown() // Clear results for short queries
+                    viewModel.onCitySelectionDialogShown()
                 }
             }
         })
@@ -185,36 +176,43 @@ class WeatherFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiState.collect { state ->
-                    // --- Loading State ---
                     progressBar.visibility = if (state.isLoading) View.VISIBLE else View.GONE
                     weatherDataContainer.visibility = if (state.isLoading || state.error != null) View.GONE else View.VISIBLE
 
-                    // --- Error State ---
                     state.error?.let {
                         Toast.makeText(requireContext(), it, Toast.LENGTH_LONG).show()
+                        viewModel.clearError()
                     }
 
-                    // --- City Search Results ---
                     citySearchAdapter.submitList(state.cityList)
                     citySearchCardContainer.visibility = if (state.cityList.isNotEmpty()) View.VISIBLE else View.GONE
 
-                    // --- Main Weather Data ---
                     state.cityName?.let { cityName.text = it }
                     if (state.fullForecast.isNotEmpty()) {
                         setupForecastTabs(state.fullForecast)
                     }
 
-                    // --- Detailed Daily Weather ---
+                    // Update the sun icon's position
+                    if (state.selectedDayWeather != null) {
+                        updateSunIconPosition(state.sunPositionBias)
+                        sunIcon.visibility = View.VISIBLE
+                    } else {
+                        sunIcon.visibility = View.INVISIBLE
+                    }
+
+
                     state.selectedDayWeather?.let { details ->
                         val animation = AnimationUtils.loadAnimation(requireContext(), R.anim.item_animation_fall_down)
                         dailyDetailsContainer.startAnimation(animation)
 
                         temperature.text = "${details.tempMax} / ${details.tempMin}"
                         weatherDescription.text = details.weatherDescription
+
                         uvIndex.text = details.uvIndex
-                        sunrise.text = details.sunrise
-                        sunset.text = details.sunset
-                        daylight.text = details.daylight
+                        sunriseTime.text = details.sunrise.split(": ").lastOrNull() ?: ""
+                        sunsetTime.text = details.sunset.split(": ").lastOrNull() ?: ""
+                        // moonPhase.text = "Moon: " + details.moonPhase // We will add this later
+
                         pressure.text = details.pressure ?: "Pressure: N/A"
                         humidity.text = details.humidity ?: "Humidity: N/A"
                         precipitation.text = details.precipitationChance ?: "Precipitation Chance: N/A"
@@ -227,8 +225,29 @@ class WeatherFragment : Fragment() {
         }
     }
 
+    /**
+     * Calculates the X and Y position of the sun icon on the arc
+     * using trigonometry to create a smooth, circular path.
+     */
+    private fun updateSunIconPosition(progress: Float) {
+        // Convert the linear progress (0.0=sunrise, 1.0=sunset) into an angle in radians.
+        // The angle goes from PI (180 deg) at sunrise, to PI/2 (90 deg) at noon,
+        // to 0 at sunset, and continues into negative values for the night path.
+        val angle = Math.PI * (1 - progress)
+
+        // Calculate the horizontal and vertical positions using cos and sin.
+        val horizontalBias = ( (cos(angle) + 1) / 2 ).toFloat()
+        val verticalBias = ( (1 - sin(angle)) / 2 ).toFloat()
+
+        // Apply the new biases to the sun icon's layout parameters.
+        val params = sunIcon.layoutParams as ConstraintLayout.LayoutParams
+        params.horizontalBias = horizontalBias
+        params.verticalBias = verticalBias
+        sunIcon.layoutParams = params
+    }
+
     private fun setupForecastTabs(forecast: List<DailyForecast>) {
-        if (forecastTabs.tabCount == forecast.size) return // Avoid re-adding tabs unnecessarily
+        if (forecastTabs.tabCount == forecast.size) return
 
         forecastTabs.removeAllTabs()
         forecast.forEachIndexed { index, day ->

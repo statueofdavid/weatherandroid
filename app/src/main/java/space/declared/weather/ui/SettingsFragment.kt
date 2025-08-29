@@ -26,7 +26,7 @@ import space.declared.weather.R
  */
 class SettingsFragment : Fragment() {
 
-    private val viewModel: MainViewModel by activityViewModels()
+    private val viewModel: WeatherViewModel by activityViewModels()
     private lateinit var sharedPreferences: SharedPreferences
 
     // UI Views - Updated for clickable rows

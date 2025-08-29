@@ -7,6 +7,8 @@
 
         <!-- Make sure all standard text is black -->
         <item name="android:textColor">@color/black</item>
+        <!-- For Light Mode -->
+        <item name="sunColor">#000000</item> <!-- Black -->
 
         <!-- Point to our custom preference theme -->
         <item name="preferenceTheme">@style/AppPreferenceTheme</item>

@@ -21,6 +21,8 @@ import space.declared.weather.data.TideData
 import space.declared.weather.data.source.UsgsRemoteDataSource
 import space.declared.weather.data.WaterLevelData
 import space.declared.weather.data.local.SavedLocationEntity
+import space.declared.weather.data.source.UsnoMoonDataSource
+import java.util.Date
 import java.util.concurrent.TimeUnit
 
 class WeatherRepository(
@@ -28,6 +30,7 @@ class WeatherRepository(
     private val openMeteoDataSource: OpenMeteoRemoteDataSource,
     private val noaaDataSource: NoaaRemoteDataSource,
     private val usgsDataSource: UsgsRemoteDataSource,
+    private val moonDataSource: UsnoMoonDataSource,
     private val localDataSource: StationLocalDataSource,
     private val savedLocationDao: SavedLocationDao
 ) {
@@ -40,6 +43,10 @@ class WeatherRepository(
 
     init {
         syncStationsIfNeeded()
+    }
+
+    suspend fun fetchMoonData(date: Date, latitude: Double, longitude: Double): MoonData? {
+        return moonDataSource.fetchMoonPhase(date, latitude, longitude)
     }
 
     suspend fun saveLocation(location: SavedLocationEntity) {
