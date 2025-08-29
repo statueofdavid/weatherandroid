@@ -27,8 +27,8 @@ import space.declared.weather.data.local.SavedLocationEntity
 import space.declared.weather.data.local.StationLocalDataSource
 import space.declared.weather.data.source.NoaaRemoteDataSource
 import space.declared.weather.data.source.OpenMeteoRemoteDataSource
-import space.declared.weather.data.source.UsgsRemoteDataSource
 import space.declared.weather.data.source.UsnoMoonDataSource
+import space.declared.weather.data.source.UsgsRemoteDataSource
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -128,7 +128,6 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             database.savedLocationDao()
         )
 
-        // Observe both isSyncing and savedLocations and update the state in one place
         viewModelScope.launch {
             combine(
                 repository.isSyncing,
@@ -146,7 +145,7 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
                 _uiState.update { it.copy(isSyncing = isSyncing, savedLocations = savedLocations) }
-            }.collect {} // Terminal operator to start the flow
+            }.collect {}
         }
 
         startSunPositionUpdater()
@@ -180,9 +179,10 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             if (daylightDuration <= 0) return
 
             val timeSinceSunrise = locationTime.timeInMillis - sunrise.time
-
-            // FIX: The progress is no longer clamped between 0 and 1.
             val progress = (timeSinceSunrise.toFloat() / daylightDuration.toFloat())
+
+            // ADDED: Log the calculated progress
+            Log.d("ViewModel_Sun", "Calculated sun position progress: $progress")
 
             _uiState.update { it.copy(sunPositionBias = progress) }
 
@@ -229,11 +229,12 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
 
         viewModelScope.launch {
             try {
-                val (forecastList, timezone) = fetchWeatherSuspend(latitude, longitude)
+                val weatherDataDeferred = async { fetchWeatherSuspend(latitude, longitude) }
                 val stationDataDeferred = async { fetchNearbyStationsSuspend(latitude, longitude) }
-                val stationItems = stationDataDeferred.await()
-
                 val moonDataDeferred = async { repository.fetchMoonData(Date(), latitude, longitude) }
+
+                val (forecastList, timezone) = weatherDataDeferred.await()
+                val stationItems = stationDataDeferred.await()
                 val moonData = moonDataDeferred.await()
 
                 val timestamp = System.currentTimeMillis()
@@ -446,7 +447,7 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             cloudCover = cloudCoverVal,
             wind = windVal,
             windGusts = windGustsVal,
-            rawSunrise = sunriseStr, // Populate the new raw fields
+            rawSunrise = sunriseStr,
             rawSunset = sunsetStr
         )
     }

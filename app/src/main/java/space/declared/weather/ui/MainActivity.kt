@@ -22,7 +22,6 @@ import space.declared.weather.R
 
 class MainActivity : AppCompatActivity() {
 
-    // Use the correct WeatherViewModel
     private val viewModel: WeatherViewModel by viewModels()
 
     private lateinit var drawerLayout: DrawerLayout
@@ -45,15 +44,12 @@ class MainActivity : AppCompatActivity() {
         // --- 2. Set up the UI components by calling helper functions ---
         setSupportActionBar(toolbar)
         setupBottomNav(bottomNavView)
-        // This combined function ensures the adapter is created before it's used.
         setupDrawerAndObserve(navDrawerContainer)
     }
 
     private fun setupBottomNav(bottomNavView: BottomNavigationView) {
-        // This connects your Weather, Water, and Settings fragments to the bottom nav
         NavigationUI.setupWithNavController(bottomNavView, navController)
 
-        // This adds the custom behavior for the "Saved Locations" button
         bottomNavView.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_saved_locations -> {
@@ -62,13 +58,10 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         drawerLayout.openDrawer(GravityCompat.START)
                     }
-                    // Return false so the item doesn't stay selected
                     return@setOnItemSelectedListener false
                 }
                 else -> {
-                    // FIX: Close the details card when navigating away
                     viewModel.onDetailCardClosed()
-                    // For all other items, close the drawer and navigate
                     drawerLayout.closeDrawer(GravityCompat.START)
                     return@setOnItemSelectedListener NavigationUI.onNavDestinationSelected(item, navController)
                 }
@@ -76,19 +69,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Sets up the drawer's RecyclerView and adapter, and then immediately
-     * starts observing the data. This guarantees the adapter is initialized
-     * before it's ever used, fixing the race condition.
-     */
     private fun setupDrawerAndObserve(navDrawerContainer: FrameLayout) {
-        // Find the RecyclerView inside the drawer container
         val savedLocationsRecyclerView: RecyclerView = navDrawerContainer.findViewById(R.id.savedLocationsRecyclerView)
 
-        // Create and configure the adapter that handles clicks
         savedLocationsAdapter = SavedLocationsAdapter(
             onLocationClicked = { location ->
-                // ADDED: Close the details card to prevent showing stale data.
                 viewModel.onDetailCardClosed()
                 viewModel.fetchInitialData(location.latitude, location.longitude, location.name)
                 drawerLayout.closeDrawer(GravityCompat.START)
@@ -100,7 +85,6 @@ class MainActivity : AppCompatActivity() {
         savedLocationsRecyclerView.adapter = savedLocationsAdapter
         savedLocationsRecyclerView.layoutManager = LinearLayoutManager(this)
 
-        // Observe the list of saved locations from the ViewModel's StateFlow
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiState.collect { state ->

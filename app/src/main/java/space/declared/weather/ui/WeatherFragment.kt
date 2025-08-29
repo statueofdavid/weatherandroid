@@ -192,7 +192,7 @@ class WeatherFragment : Fragment() {
                         setupForecastTabs(state.fullForecast)
                     }
 
-                    // Update the sun icon's position using the new trigonometric calculation
+                    // Update the sun icon's position
                     if (state.selectedDayWeather != null) {
                         updateSunIconPosition(state.sunPositionBias)
                         sunIcon.visibility = View.VISIBLE
@@ -200,12 +200,6 @@ class WeatherFragment : Fragment() {
                         sunIcon.visibility = View.INVISIBLE
                     }
 
-                    if (state.moonData != null) {
-                        moonPhase.text = "Moon: ${state.moonData.phase} (${state.moonData.illumination})"
-                        moonPhase.visibility = View.VISIBLE
-                    } else {
-                        moonPhase.visibility = View.GONE
-                    }
 
                     state.selectedDayWeather?.let { details ->
                         val animation = AnimationUtils.loadAnimation(requireContext(), R.anim.item_animation_fall_down)
@@ -236,7 +230,7 @@ class WeatherFragment : Fragment() {
      * using trigonometry to create a smooth, circular path.
      */
     private fun updateSunIconPosition(progress: Float) {
-        // Convert the linear progress into an angle in radians.
+        // Convert the linear progress (0.0=sunrise, 1.0=sunset) into an angle in radians.
         // The angle goes from PI (180 deg) at sunrise, to PI/2 (90 deg) at noon,
         // to 0 at sunset, and continues into negative values for the night path.
         val angle = Math.PI * (1 - progress)
@@ -251,19 +245,6 @@ class WeatherFragment : Fragment() {
         params.verticalBias = verticalBias
         sunIcon.layoutParams = params
     }
-
-//    private fun updateSunIconPosition(progress: Float) {
-//        // 1. Get the layout parameters for the sun icon.
-//        val params = sunIcon.layoutParams as ConstraintLayout.LayoutParams
-//
-//        // 2. The 'progress' value is the sun's position from the ViewModel
-//        //    (0.0 for sunrise, 1.0 for sunset). We use this value to directly
-//        //    set the icon's horizontal position.
-//        params.horizontalBias = progress.coerceIn(0f, 1f)
-//
-//        // 3. Apply the updated parameters to the icon.
-//        sunIcon.layoutParams = params
-//    }
 
     private fun setupForecastTabs(forecast: List<DailyForecast>) {
         if (forecastTabs.tabCount == forecast.size) return

@@ -146,17 +146,16 @@
                     android:layout_height="wrap_content"
                     android:padding="16dp">
 
-                    <!-- Sun Icon -->
+                    <!-- Sun Icon (Now constrained for circular animation) -->
                     <ImageView
                         android:id="@+id/sunIcon"
                         android:layout_width="24dp"
                         android:layout_height="24dp"
                         android:src="@drawable/ic_sun"
-                        android:translationY="-12dp"
-                        app:layout_constraintBottom_toTopOf="@id/celestialArc"
+                        app:layout_constraintTop_toTopOf="@id/celestialArc"
+                        app:layout_constraintBottom_toBottomOf="@id/celestialArc"
                         app:layout_constraintStart_toStartOf="@id/celestialArc"
-                        app:layout_constraintEnd_toEndOf="@id/celestialArc"
-                        app:layout_constraintHorizontal_bias="0.5" />
+                        app:layout_constraintEnd_toEndOf="@id/celestialArc" />
 
                     <!-- UV Index -->
                     <TextView
@@ -173,14 +172,12 @@
                     <View
                         android:id="@+id/celestialArc"
                         android:layout_width="0dp"
-                        android:layout_height="75dp"
-                        android:layout_marginTop="48dp"
+                        android:layout_height="150dp"
+                        android:layout_marginTop="8dp"
                         android:background="@drawable/celestial_arc"
                         app:layout_constraintTop_toBottomOf="@id/uvIndex"
-                        app:layout_constraintStart_toEndOf="@id/sunriseTime"
-                        app:layout_constraintEnd_toStartOf="@id/sunsetTime"
-                        android:layout_marginStart="32dp"
-                        android:layout_marginEnd="32dp"/>
+                        app:layout_constraintEnd_toEndOf="parent"
+                        app:layout_constraintStart_toStartOf="parent" />
 
                     <!-- Sunrise Info -->
                     <TextView
@@ -189,6 +186,8 @@
                         android:layout_height="wrap_content"
                         android:textSize="16sp"
                         android:textStyle="bold"
+                        android:layout_marginStart="16dp"
+                        android:layout_marginTop="24dp"
                         app:layout_constraintTop_toTopOf="@id/celestialArc"
                         app:layout_constraintBottom_toBottomOf="@id/celestialArc"
                         app:layout_constraintStart_toStartOf="parent"
@@ -201,6 +200,8 @@
                         android:layout_height="wrap_content"
                         android:textSize="16sp"
                         android:textStyle="bold"
+                        android:layout_marginEnd="16dp"
+                        android:layout_marginTop="24dp"
                         app:layout_constraintTop_toTopOf="@id/celestialArc"
                         app:layout_constraintBottom_toBottomOf="@id/celestialArc"
                         app:layout_constraintEnd_toEndOf="parent"
@@ -211,7 +212,7 @@
                         android:id="@+id/moonPhase"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="48dp"
+                        android:layout_marginTop="8dp"
                         android:textSize="16sp"
                         app:layout_constraintEnd_toEndOf="parent"
                         app:layout_constraintStart_toStartOf="parent"
