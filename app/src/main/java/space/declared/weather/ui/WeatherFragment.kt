@@ -207,7 +207,14 @@ class WeatherFragment : Fragment() {
                             uvIndex.text = details.uvIndex
                             sunriseTime.text = details.sunrise
                             sunsetTime.text = details.sunset
-                            moonPhase.text = state.moonData?.phase ?: "Moon phase unavailable"
+
+                            state.moonData?.let { moon ->
+                                val illuminationPercentage = moon.illumination.replace("%", "").toInt()
+                                val moonEmoji = getMoonPhaseEmoji(moon.phase)
+                                moonPhase.text = "$moonEmoji ${moon.phase} (${illuminationPercentage}%)"
+                            } ?: run {
+                                moonPhase.text = "Moon phase unavailable"
+                            }
 
                             // Intelligently show/hide views
                             if (details.isCurrentDay) {
@@ -311,5 +318,19 @@ class WeatherFragment : Fragment() {
             val date = inputFormat.parse(dateString)
             outputFormat.format(date!!)
         } catch (e: Exception) { "N/A" }
+    }
+
+    private fun getMoonPhaseEmoji(phase: String): String {
+        return when (phase) {
+            "New Moon" -> "🌑"
+            "Waxing Crescent" -> "🌒"
+            "First Quarter" -> "🌓"
+            "Waxing Gibbous" -> "🌔"
+            "Full Moon" -> "🌕"
+            "Waning Gibbous" -> "🌖"
+            "Last Quarter" -> "🌗"
+            "Waning Crescent" -> "🌘"
+            else -> "🌙" // Default for "unavailable" or other phases
+        }
     }
 }
