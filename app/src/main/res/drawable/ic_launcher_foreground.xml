@@ -4,51 +4,63 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Sun Body -->
     <path
         android:fillColor="#FFD700"
         android:pathData="M54,36 A18,18 0 1,1 54,72 A18,18 0 1,1 54,36" />
 
-    <!-- Sun Rays -->
     <path
-        android:fillColor="#FFD700"
-        android:pathData="M54,26 L54,16 M54,92 L54,82 M26,54 L16,54 M92,54 L82,54 M35,35 L28,28 M80,80 L73,73 M35,73 L28,80 M80,35 L73,28"
-        android:strokeWidth="4"
         android:strokeColor="#FFD700"
-        android:strokeLineCap="round" />
-
-    <!-- Megaphone -->
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="
+            M54,26 L54,16  " /> <path
+    android:strokeColor="#FFD700"
+    android:strokeWidth="4"
+    android:strokeLineCap="round"
+    android:pathData="
+            M54,92 L54,82 " /> <path
+    android:strokeColor="#FFD700"
+    android:strokeWidth="4"
+    android:strokeLineCap="round"
+    android:pathData="
+            M26,54 L16,54 " /> <path
+    android:strokeColor="#FFD700"
+    android:strokeWidth="4"
+    android:strokeLineCap="round"
+    android:pathData="
+            M92,54 L82,54 " /> <path
+    android:strokeColor="#FFD700"
+    android:strokeWidth="4"
+    android:strokeLineCap="round"
+    android:pathData="
+            M35,35 L28,28 " /> <path
+    android:strokeColor="#FFD700"
+    android:strokeWidth="4"
+    android:strokeLineCap="round"
+    android:pathData="
+            M73,35 L80,28 " /> <path
+    android:strokeColor="#FFD700"
+    android:strokeWidth="4"
+    android:strokeLineCap="round"
+    android:pathData="
+            M35,73 L28,80 " /> <path
+    android:strokeColor="#FFD700"
+    android:strokeWidth="4"
+    android:strokeLineCap="round"
+    android:pathData="
+            M73,73 L80,80 " /> <path
+    android:strokeColor="#000000"
+    android:strokeWidth="2.5"
+    android:strokeLineCap="round"
+    android:pathData="M47,45 L51,49 M51,45 L47,49" />
     <path
-        android:fillColor="#BDBDBD"
-        android:pathData="M40,50 L20,44 L20,64 L40,58 Z" />
-    <path
-        android:fillColor="#E0E0E0"
-        android:pathData="M40,52 h 8 v 4 h -8 Z" />
+        android:strokeColor="#000000"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M57,45 L61,49 M61,45 L57,49" />
 
-
-    <!-- Screaming Mouth -->
     <path
         android:fillColor="#000000"
-        android:pathData="M54,58 A6,3 0 0,0 54,64" />
-
-    <!-- Eyes -->
-    <path
-        android:fillColor="#000000"
-        android:pathData="M48,48 m-2,0 a2,2 0,1 1,4 0 a2,2 0,1 1,-4 0" />
-    <path
-        android:fillColor="#000000"
-        android:pathData="M60,48 m-2,0 a2,2 0,1 1,4 0 a2,2 0,1 1,-4 0" />
-
-
-    <!-- Clouds coming out of megaphone -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M15,48 A5,5 0 0,1 25,48 A5,5 0 0,1 15,48" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M10,55 A4,4 0 0,1 18,55 A4,4 0 0,1 10,55" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M20,58 A6,6 0 0,1 32,58 A6,6 0 0,1 20,58" />
+        android:pathData="M54,58 A10,7 0 1,1 54,72 A10,7 0 1,1 54,58 Z" />
 
 </vector>
