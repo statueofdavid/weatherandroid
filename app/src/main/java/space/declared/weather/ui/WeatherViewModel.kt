@@ -78,6 +78,11 @@ enum class SortType {
     BY_DISTANCE
 }
 
+enum class SortOrder {
+    ASCENDING,
+    DESCENDING
+}
+
 data class WeatherUiState(
     val isLoading: Boolean = false,
     val isFetchingDetails: Boolean = false,
@@ -91,6 +96,7 @@ data class WeatherUiState(
     val selectedDayIndex: Int = 0,
     val selectedStationDetails: WaterData? = null,
     val stationSortType: SortType = SortType.BY_DISTANCE,
+    val stationSortOrder: SortOrder = SortOrder.ASCENDING,
     val savedLocations: List<SavedLocation> = emptyList(),
     val unitSystem: String = "imperial",
     val sunPositionBias: Float = -1f,
@@ -314,20 +320,34 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
 
     fun onSortStationsByName() {
         _uiState.update { currentState ->
-            val newSortType = if (currentState.stationSortType == SortType.BY_NAME) SortType.NONE else SortType.BY_NAME
+            val newSortOrder = if (currentState.stationSortType == SortType.BY_NAME &&
+                currentState.stationSortOrder == SortOrder.ASCENDING) {
+                SortOrder.DESCENDING
+            } else {
+                SortOrder.ASCENDING
+            }
+
             currentState.copy(
-                stationSortType = newSortType,
-                stationListItems = processStationList(originalStationList, newSortType)
+                stationSortType = SortType.BY_NAME,
+                stationSortOrder = newSortOrder,
+                stationListItems = sortStations(originalStationList, SortType.BY_NAME, newSortOrder)
             )
         }
     }
 
     fun onSortStationsByDistance() {
         _uiState.update { currentState ->
-            val newSortType = if (currentState.stationSortType == SortType.BY_DISTANCE) SortType.NONE else SortType.BY_DISTANCE
+            val newSortOrder = if (currentState.stationSortType == SortType.BY_DISTANCE &&
+                currentState.stationSortOrder == SortOrder.ASCENDING) {
+                SortOrder.DESCENDING
+            } else {
+                SortOrder.ASCENDING
+            }
+
             currentState.copy(
-                stationSortType = newSortType,
-                stationListItems = processStationList(originalStationList, newSortType)
+                stationSortType = SortType.BY_DISTANCE,
+                stationSortOrder = newSortOrder,
+                stationListItems = sortStations(originalStationList, SortType.BY_DISTANCE, newSortOrder)
             )
         }
     }
@@ -556,6 +576,21 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             80, 81, 82 -> "Rain showers"
             95 -> "Thunderstorm"
             else -> "Unknown"
+        }
+    }
+
+    private fun sortStations(list: List<StationListItem>, sortType: SortType, sortOrder: SortOrder): List<StationListItem> {
+        return when (sortOrder) {
+            SortOrder.ASCENDING -> when (sortType) {
+                SortType.BY_NAME -> list.sortedBy { it.entity.name }
+                SortType.BY_DISTANCE -> list.sortedBy { it.distanceInMeters }
+                SortType.NONE -> list
+            }
+            SortOrder.DESCENDING -> when (sortType) {
+                SortType.BY_NAME -> list.sortedByDescending { it.entity.name }
+                SortType.BY_DISTANCE -> list.sortedByDescending { it.distanceInMeters }
+                SortType.NONE -> list
+            }
         }
     }
 }
