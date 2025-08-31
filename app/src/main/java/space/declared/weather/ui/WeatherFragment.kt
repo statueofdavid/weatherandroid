@@ -196,6 +196,9 @@ class WeatherFragment : Fragment() {
                         // This call was missing. It populates the "Today", "Mon", "Tue" tabs.
                         setupForecastTabs(state.fullForecast)
 
+                        // This ensures the correct tab is selected when the fragment's view is recreated.
+                        forecastTabs.getTabAt(state.selectedDayIndex)?.select()
+
                         // Your existing logic to update the detailed card is good.
                         state.selectedDayWeather?.let { details ->
                             // Use the combined temperature for the main display
