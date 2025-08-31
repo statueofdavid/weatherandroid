@@ -1,0 +1,92 @@
+
+
+<!--    Looking at the coordinates, here's the issue and how we can fix it:-->
+
+<!--    * **Top-Left Ray:** `M35,35 L28,28` (Starts at 35,35 and ends at 28,28. This is going *outwards* from the center in the top-left direction.)-->
+<!--    * **Top-Right Ray (Currently):** `M80,35 L73,28` (Starts at 80,35 and ends at 73,28. This ray is currently mirrored horizontally correctly relative to the top-left, but it's *pointing inwards* towards the sun if you compare the X and Y movement from M to L).-->
+
+<!--    **To make the Top-Right ray a true reflection of the Top-Left:**-->
+
+<!--    1.  **Top-Left:** `M35,35 L28,28`-->
+<!--    * Start point: (X-coordinate: 54 - 19 = 35, Y-coordinate: 54 - 19 = 35)-->
+<!--    * End point: (X-coordinate: 54 - 26 = 28, Y-coordinate: 54 - 26 = 28)-->
+
+<!--    2.  **Desired Top-Right Reflection:**-->
+<!--    * The X-coordinates should be mirrored:-->
+<!--    * Start X: 54 + 19 = 73 (Oops, should be 73 for the start, 80 for the end to match the "outward" direction)-->
+<!--    * End X: 54 + 26 = 80-->
+<!--    * The Y-coordinates should be the same as the Top-Left (since it's a reflection across the vertical axis, but the ray is pointing outward so it will be relative to 54, 54):-->
+<!--    * Start Y: 54 - 19 = 35-->
+<!--    * End Y: 54 - 26 = 28-->
+
+<!--    So, the Top-Right ray should be `M73,35 L80,28` to be a direct reflection of `M35,35 L28,28`, moving *outward* from the sun.-->
+
+<!--    Let's apply this and update the XML:-->
+
+<!--    ```xml-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M54,36 A18,18 0 1,1 54,72 A18,18 0 1,1 54,36" />
+
+    <path
+        android:strokeColor="#FFD700"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="
+            M54,26 L54,16  " /> <path
+    android:strokeColor="#FFD700"
+    android:strokeWidth="4"
+    android:strokeLineCap="round"
+    android:pathData="
+            M54,92 L54,82 " /> <path
+    android:strokeColor="#FFD700"
+    android:strokeWidth="4"
+    android:strokeLineCap="round"
+    android:pathData="
+            M26,54 L16,54 " /> <path
+    android:strokeColor="#FFD700"
+    android:strokeWidth="4"
+    android:strokeLineCap="round"
+    android:pathData="
+            M92,54 L82,54 " /> <path
+    android:strokeColor="#FFD700"
+    android:strokeWidth="4"
+    android:strokeLineCap="round"
+    android:pathData="
+            M35,35 L28,28 " /> <path
+    android:strokeColor="#FFD700"
+    android:strokeWidth="4"
+    android:strokeLineCap="round"
+    android:pathData="
+            M73,35 L80,28 " /> <path
+    android:strokeColor="#FFD700"
+    android:strokeWidth="4"
+    android:strokeLineCap="round"
+    android:pathData="
+            M35,73 L28,80 " /> <path
+    android:strokeColor="#FFD700"
+    android:strokeWidth="4"
+    android:strokeLineCap="round"
+    android:pathData="
+            M73,73 L80,80 " /> <path
+    android:strokeColor="#000000"
+    android:strokeWidth="2.5"
+    android:strokeLineCap="round"
+    android:pathData="M47,45 L51,49 M51,45 L47,49" />
+    <path
+        android:strokeColor="#000000"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M57,45 L61,49 M61,45 L57,49" />
+
+    <path
+        android:fillColor="#000000"
+        android:pathData="M54,58 A10,7 0 1,1 54,72 A10,7 0 1,1 54,58 Z" />
+
+</vector>
