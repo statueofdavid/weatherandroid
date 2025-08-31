@@ -43,25 +43,28 @@ class OpenMeteoRemoteDataSource(context: Context) {
     }
 
     /**
-     * Fetches the full weather data, now accepting a unit system preference.
+     * Fetches the full weather data, including current, hourly, and daily summaries.
      */
     fun fetchWeatherData(latitude: Double, longitude: Double, units: String, callback: ApiCallback<JSONObject>) {
         val tempUnit = if (units == "imperial") "fahrenheit" else "celsius"
         val windUnit = if (units == "imperial") "mph" else "kmh"
 
+        // Parameters for the "current" weather object
         val currentParams = "temperature_2m,weather_code,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m"
-        val hourlyParams = "relative_humidity_2m,precipitation_probability,cloud_cover"
-        val dailyParams = "weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,daylight_duration,uv_index_max"
-        val url = "https://api.open-meteo.com/v1/forecast?latitude=$latitude&longitude=$longitude&current=$currentParams&hourly=$hourlyParams&daily=$dailyParams&temperature_unit=$tempUnit&wind_speed_unit=$windUnit&precipitation_unit=mm&timezone=auto&forecast_days=10"
 
-        val jsonObjectRequest = JsonObjectRequest(Request.Method.GET, url, null,
-            { response ->
-                callback.onSuccess(response)
-            },
-            { error ->
-                callback.onError(error.message ?: "Unknown error fetching weather data")
-            }
+        // Parameters for the "hourly" forecast object
+        val hourlyParams = "temperature_2m,relative_humidity_2m,precipitation_probability,cloud_cover"
+
+        // Parameters for the "daily" forecast object, now including summary data
+        val dailyParams = "weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,daylight_duration,uv_index_max,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max"
+
+        // Construct the final URL with all necessary parameters
+        val url = "https://api.open-meteo.com/v1/forecast?latitude=$latitude&longitude=$longitude&current=$currentParams&hourly=$hourlyParams&daily=$dailyParams&temperature_unit=$tempUnit&wind_speed_unit=$windUnit&timeformat=unixtime&timezone=auto"
+
+        val request = JsonObjectRequest(Request.Method.GET, url, null,
+            { response -> callback.onSuccess(response) },
+            { error -> callback.onError(error.message ?: "Unknown error fetching weather data") }
         )
-        requestQueue.add(jsonObjectRequest)
+        requestQueue.add(request)
     }
 }
