@@ -88,6 +88,7 @@ data class WeatherUiState(
     val cityList: List<CityResult> = emptyList(),
     val stationListItems: List<StationListItem> = emptyList(),
     val selectedDayWeather: DetailedDayWeather? = null,
+    val selectedDayIndex: Int = 0,
     val selectedStationDetails: WaterData? = null,
     val stationSortType: SortType = SortType.BY_DISTANCE,
     val savedLocations: List<SavedLocation> = emptyList(),
@@ -299,7 +300,10 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         if (index >= fullForecast.size) return
         val selectedDay = fullForecast[index]
         _uiState.update {
-            it.copy(selectedDayWeather = createDetailedWeatherForDay(selectedDay, index))
+            it.copy(
+                selectedDayWeather = createDetailedWeatherForDay(selectedDay, index),
+                selectedDayIndex = index
+            )
         }
         if (index == 0) {
             updateSunPosition()
