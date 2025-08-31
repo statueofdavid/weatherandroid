@@ -176,49 +176,69 @@ class WeatherFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiState.collect { state ->
+
+                    // --- START: CORE VISIBILITY LOGIC (This was missing) ---
                     progressBar.visibility = if (state.isLoading) View.VISIBLE else View.GONE
-                    weatherDataContainer.visibility = if (state.isLoading || state.error != null) View.GONE else View.VISIBLE
 
-                    state.error?.let {
-                        Toast.makeText(requireContext(), it, Toast.LENGTH_LONG).show()
-                        viewModel.clearError()
-                    }
+                    // Show weather data ONLY if not loading AND we have a forecast
+                    val isDataReady = !state.isLoading && state.fullForecast.isNotEmpty()
+                    weatherDataContainer.visibility = if (isDataReady) View.VISIBLE else View.GONE
 
+                    // Show city search results if the list is not empty
                     citySearchAdapter.submitList(state.cityList)
                     citySearchCardContainer.visibility = if (state.cityList.isNotEmpty()) View.VISIBLE else View.GONE
+                    // --- END: CORE VISIBILITY LOGIC ---
 
-                    state.cityName?.let { cityName.text = it }
-                    if (state.fullForecast.isNotEmpty()) {
+                    // If data is ready, populate all the views
+                    if (isDataReady) {
+                        cityName.text = state.cityName
+
+                        // This call was missing. It populates the "Today", "Mon", "Tue" tabs.
                         setupForecastTabs(state.fullForecast)
+
+                        // Your existing logic to update the detailed card is good.
+                        state.selectedDayWeather?.let { details ->
+                            // Use the combined temperature for the main display
+                            temperature.text = "${details.tempMax} / ${details.tempMin}"
+                            weatherDescription.text = details.weatherDescription
+                            uvIndex.text = details.uvIndex
+                            sunriseTime.text = details.sunrise
+                            sunsetTime.text = details.sunset
+                            moonPhase.text = state.moonData?.phase ?: "Moon phase unavailable"
+
+                            // Intelligently show/hide views
+                            if (details.isCurrentDay) {
+                                sunIcon.visibility = View.VISIBLE
+                                pressure.visibility = View.VISIBLE
+                                humidity.visibility = View.VISIBLE
+                                cloudCover.visibility = View.VISIBLE
+
+                                updateSunIconPosition(state.sunPositionBias)
+                                pressure.text = details.pressure
+                                humidity.text = details.humidity
+                                cloudCover.text = details.cloudCover
+
+                            } else {
+                                sunIcon.visibility = View.INVISIBLE
+                                pressure.visibility = View.GONE
+                                humidity.visibility = View.GONE
+                                cloudCover.visibility = View.GONE
+                            }
+
+                            precipitation.text = details.precipitationChance
+                            wind.text = details.wind
+                            windGusts.text = details.windGusts
+
+                            // Animate the container
+                            val animation = AnimationUtils.loadAnimation(requireContext(), R.anim.item_animation_fall_down)
+                            dailyDetailsContainer.startAnimation(animation)
+                        }
                     }
 
-                    // Update the sun icon's position
-                    if (state.selectedDayWeather != null) {
-                        updateSunIconPosition(state.sunPositionBias)
-                        sunIcon.visibility = View.VISIBLE
-                    } else {
-                        sunIcon.visibility = View.INVISIBLE
-                    }
-
-
-                    state.selectedDayWeather?.let { details ->
-                        val animation = AnimationUtils.loadAnimation(requireContext(), R.anim.item_animation_fall_down)
-                        dailyDetailsContainer.startAnimation(animation)
-
-                        temperature.text = "${details.tempMax} / ${details.tempMin}"
-                        weatherDescription.text = details.weatherDescription
-
-                        uvIndex.text = details.uvIndex
-                        sunriseTime.text = details.sunrise.split(": ").lastOrNull() ?: ""
-                        sunsetTime.text = details.sunset.split(": ").lastOrNull() ?: ""
-                        // moonPhase.text = "Moon: " + details.moonPhase // We will add this later
-
-                        pressure.text = details.pressure ?: "Pressure: N/A"
-                        humidity.text = details.humidity ?: "Humidity: N/A"
-                        precipitation.text = details.precipitationChance ?: "Precipitation Chance: N/A"
-                        cloudCover.text = details.cloudCover ?: "Cloud Cover: N/A"
-                        wind.text = details.wind ?: "Wind: N/A"
-                        windGusts.text = details.windGusts ?: "Gusts: N/A"
+                    // Handle errors
+                    state.error?.let {
+                        Toast.makeText(context, "Error: $it", Toast.LENGTH_LONG).show()
+                        viewModel.clearError() // Clear error after showing it
                     }
                 }
             }

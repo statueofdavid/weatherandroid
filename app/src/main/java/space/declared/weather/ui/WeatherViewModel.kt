@@ -27,8 +27,8 @@ import space.declared.weather.data.local.SavedLocationEntity
 import space.declared.weather.data.local.StationLocalDataSource
 import space.declared.weather.data.source.NoaaRemoteDataSource
 import space.declared.weather.data.source.OpenMeteoRemoteDataSource
-import space.declared.weather.data.source.UsnoMoonDataSource
 import space.declared.weather.data.source.UsgsRemoteDataSource
+import space.declared.weather.data.source.UsnoMoonDataSource
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -57,6 +57,7 @@ data class DetailedDayWeather(
     val cloudCover: String?,
     val wind: String?,
     val windGusts: String?,
+    val isCurrentDay: Boolean,
     val rawSunrise: String,
     val rawSunset: String
 )
@@ -91,7 +92,7 @@ data class WeatherUiState(
     val stationSortType: SortType = SortType.BY_DISTANCE,
     val savedLocations: List<SavedLocation> = emptyList(),
     val unitSystem: String = "imperial",
-    val sunPositionBias: Float = 0.5f,
+    val sunPositionBias: Float = -1f,
     val timezone: String? = null,
     val moonData: MoonData? = null
 )
@@ -105,8 +106,9 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     val uiState: StateFlow<WeatherUiState> = _uiState.asStateFlow()
 
     private var sunPositionUpdaterJob: Job? = null
-
     private var lastFullResponse: JSONObject? = null
+    private var hasInitialDataBeenFetched = false
+
     private var lastUserLocation: Location? = null
     private var originalStationList: List<StationListItem> = emptyList()
 
@@ -114,6 +116,7 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         val database = AppDatabase.getDatabase(application)
         val localDataSource = StationLocalDataSource(database.stationDao())
         val openMeteoDataSource = OpenMeteoRemoteDataSource(application)
+
         val noaaDataSource = NoaaRemoteDataSource(application)
         val usgsDataSource = UsgsRemoteDataSource(application)
         val moonDataSource = UsnoMoonDataSource(application)
@@ -144,8 +147,10 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
                         entity.isCurrentLocation
                     )
                 }
+                isSyncing to savedLocations
+            }.collect { (isSyncing, savedLocations) ->
                 _uiState.update { it.copy(isSyncing = isSyncing, savedLocations = savedLocations) }
-            }.collect {}
+            }
         }
 
         startSunPositionUpdater()
@@ -167,22 +172,22 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         val timezoneId = _uiState.value.timezone ?: return
 
         try {
-            val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm", Locale.getDefault())
+            val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm", Locale.US)
             isoFormat.timeZone = TimeZone.getTimeZone(timezoneId)
 
-            val sunrise = isoFormat.parse(rawSunriseStr) ?: return
-            val sunset = isoFormat.parse(rawSunsetStr) ?: return
+            val sunrise = isoFormat.parse(rawSunriseStr)
+            val sunset = isoFormat.parse(rawSunsetStr)
+
+            if (sunrise == null || sunset == null) {
+                return
+            }
 
             val locationTime = Calendar.getInstance(TimeZone.getTimeZone(timezoneId))
-
             val daylightDuration = sunset.time - sunrise.time
             if (daylightDuration <= 0) return
 
             val timeSinceSunrise = locationTime.timeInMillis - sunrise.time
             val progress = (timeSinceSunrise.toFloat() / daylightDuration.toFloat())
-
-            // ADDED: Log the calculated progress
-            Log.d("ViewModel_Sun", "Calculated sun position progress: $progress")
 
             _uiState.update { it.copy(sunPositionBias = progress) }
 
@@ -219,6 +224,10 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun fetchInitialData(latitude: Double, longitude: Double, name: String) {
+        if (_uiState.value.isLoading) {
+            return // Prevent fetching new data if a fetch is already in progress
+        }
+
         val units = sharedPreferences.getString("units", "imperial") ?: "imperial"
         _uiState.update { it.copy(isLoading = true, error = null, unitSystem = units) }
 
@@ -229,16 +238,18 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
 
         viewModelScope.launch {
             try {
+                Log.d("ViewModel_Fetch", "Starting initial data fetch for $name")
                 val weatherDataDeferred = async { fetchWeatherSuspend(latitude, longitude) }
                 val stationDataDeferred = async { fetchNearbyStationsSuspend(latitude, longitude) }
                 val moonDataDeferred = async { repository.fetchMoonData(Date(), latitude, longitude) }
 
                 val (forecastList, timezone) = weatherDataDeferred.await()
+                Log.d("ViewModel_Fetch", "Weather data received. Forecast items: ${forecastList.size}, Timezone: $timezone")
+
                 val stationItems = stationDataDeferred.await()
                 val moonData = moonDataDeferred.await()
 
-                val timestamp = System.currentTimeMillis()
-                saveLocation(name, latitude, longitude, timestamp, timezone)
+                saveLocation(name, latitude, longitude, timezone)
 
                 _uiState.update {
                     it.copy(
@@ -251,8 +262,10 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
                         moonData = moonData
                     )
                 }
+
                 updateSunPosition()
             } catch (e: Exception) {
+                Log.e("ViewModel_Fetch", "Error during initial data fetch", e)
                 _uiState.update { it.copy(isLoading = false, error = e.message ?: "An unknown error occurred") }
             }
         }
@@ -291,7 +304,7 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         if (index == 0) {
             updateSunPosition()
         } else {
-            _uiState.update { it.copy(sunPositionBias = 0.5f) }
+            _uiState.update { it.copy(sunPositionBias = -1f) }
         }
     }
 
@@ -319,14 +332,14 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(cityList = emptyList()) }
     }
 
-    fun saveLocation(name: String, latitude: Double, longitude: Double, timestamp: Long, timezone: String?) {
+    fun saveLocation(name: String, latitude: Double, longitude: Double, timezone: String?) {
         viewModelScope.launch {
             repository.saveLocation(
                 SavedLocationEntity(
                     name = name,
                     latitude = latitude,
                     longitude = longitude,
-                    timestamp = timestamp,
+                    timestamp = System.currentTimeMillis(),
                     timezone = timezone
                 )
             )
@@ -360,7 +373,6 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
                     val timezone = result.optString("timezone", null)
                     if (continuation.isActive) continuation.resume(Pair(forecast, timezone))
                 }
-
                 override fun onError(error: String) {
                     if (continuation.isActive) continuation.resumeWithException(Exception(error))
                 }
@@ -394,15 +406,19 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun createDetailedWeatherForDay(day: DailyForecast, index: Int): DetailedDayWeather {
-        val units = sharedPreferences.getString("units", "metric") ?: "metric"
-        val windUnit = if (units == "imperial") "mph" else "km/h"
+        val units = sharedPreferences.getString("units", "imperial") ?: "imperial"
+        val windUnit = if (units == "imperial") "mph" else "kmh"
         val tempUnit = if (units == "imperial") "°F" else "°C"
 
         val daily = lastFullResponse?.getJSONObject("daily")
-        val uv = daily?.getJSONArray("uv_index_max")?.getDouble(index) ?: 0.0
-        val sunriseStr = daily?.getJSONArray("sunrise")?.getString(index) ?: ""
-        val sunsetStr = daily?.getJSONArray("sunset")?.getString(index) ?: ""
-        val daylightSeconds = daily?.getJSONArray("daylight_duration")?.getDouble(index) ?: 0.0
+        val uv = daily?.getJSONArray("uv_index_max")?.optDouble(index, 0.0) ?: 0.0
+
+        val sunriseTimestamp = daily?.getJSONArray("sunrise")?.optLong(index) ?: 0
+        val sunsetTimestamp = daily?.getJSONArray("sunset")?.optLong(index) ?: 0
+        val daylightSeconds = daily?.getJSONArray("daylight_duration")?.optDouble(index, 0.0) ?: 0.0
+
+        val rawSunriseStr = formatTimestampToISO(sunriseTimestamp)
+        val rawSunsetStr = formatTimestampToISO(sunsetTimestamp)
 
         var pressureVal: String? = null
         var humidityVal: String? = null
@@ -410,26 +426,35 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         var cloudCoverVal: String? = null
         var windVal: String? = null
         var windGustsVal: String? = null
+        val isCurrent = index == 0
 
-        if (index == 0 && lastFullResponse != null) {
+        if (isCurrent && lastFullResponse != null) {
             val current = lastFullResponse!!.getJSONObject("current")
             val hourly = lastFullResponse!!.getJSONObject("hourly")
-            val currentHourIndex = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+            val hourlyTimeArray = hourly.getJSONArray("time")
+            val currentTime = System.currentTimeMillis() / 1000
+            var currentHourIndex = 0
+            for (i in 0 until hourlyTimeArray.length()) {
+                if (hourlyTimeArray.getLong(i) >= currentTime) {
+                    currentHourIndex = i
+                    break
+                }
+            }
 
-            val press = current.getDouble("pressure_msl")
-            val hum = hourly.getJSONArray("relative_humidity_2m").getInt(currentHourIndex)
-            val precipChance = hourly.getJSONArray("precipitation_probability").getInt(currentHourIndex)
-            val cloud = hourly.getJSONArray("cloud_cover").getInt(currentHourIndex)
-            val windSpeed = current.getDouble("wind_speed_10m")
-            val windDir = current.getDouble("wind_direction_10m")
-            val windGust = current.getDouble("wind_gusts_10m")
+            pressureVal = "Pressure: ${current.getDouble("pressure_msl").roundToInt()} hPa"
+            humidityVal = "Humidity: ${hourly.getJSONArray("relative_humidity_2m").getInt(currentHourIndex)}%"
+            precipChanceVal = "Precipitation Chance: ${hourly.getJSONArray("precipitation_probability").getInt(currentHourIndex)}%"
+            cloudCoverVal = "Cloud Cover: ${hourly.getJSONArray("cloud_cover").getInt(currentHourIndex)}%"
+            windVal = "Wind: ${getWindDirection(current.getDouble("wind_direction_10m"))} at ${current.getDouble("wind_speed_10m").roundToInt()} $windUnit"
+            windGustsVal = "Gusts: ${current.getDouble("wind_gusts_10m").roundToInt()} $windUnit"
+        } else if (daily != null) {
+            val precipChanceMax = daily.getJSONArray("precipitation_probability_max").optInt(index, 0)
+            val windSpeedMax = daily.getJSONArray("wind_speed_10m_max").optDouble(index, 0.0)
+            val windGustsMax = daily.getJSONArray("wind_gusts_10m_max").optDouble(index, 0.0)
 
-            pressureVal = "Pressure: ${press.roundToInt()} hPa"
-            humidityVal = "Humidity: $hum%"
-            precipChanceVal = "Precipitation Chance: $precipChance%"
-            cloudCoverVal = "Cloud Cover: $cloud%"
-            windVal = "Wind: ${getWindDirection(windDir)} at ${windSpeed.roundToInt()} $windUnit"
-            windGustsVal = "Gusts: ${windGust.roundToInt()} $windUnit"
+            precipChanceVal = "Max Precip Chance: $precipChanceMax%"
+            windVal = "Max Wind: ${windSpeedMax.roundToInt()} $windUnit"
+            windGustsVal = "Max Gusts: ${windGustsMax.roundToInt()} $windUnit"
         }
 
         return DetailedDayWeather(
@@ -438,8 +463,8 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             tempMin = "${day.tempMin.roundToInt()}$tempUnit",
             weatherDescription = getWeatherDescriptionFromCode(day.weatherCode),
             uvIndex = "UV Index: ${uv.roundToInt()} (${getUvIndexRisk(uv)})",
-            sunrise = "Sunrise: ${formatTime(sunriseStr)}",
-            sunset = "Sunset: ${formatTime(sunsetStr)}",
+            sunrise = "Sunrise: ${formatTimestampToTime(sunriseTimestamp)}",
+            sunset = "Sunset: ${formatTimestampToTime(sunsetTimestamp)}",
             daylight = "Daylight: ${String.format("%.1f", daylightSeconds / 3600)} hours",
             pressure = pressureVal,
             humidity = humidityVal,
@@ -447,12 +472,14 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             cloudCover = cloudCoverVal,
             wind = windVal,
             windGusts = windGustsVal,
-            rawSunrise = sunriseStr,
-            rawSunset = sunsetStr
+            isCurrentDay = isCurrent,
+            rawSunrise = rawSunriseStr,
+            rawSunset = rawSunsetStr
         )
     }
 
     private fun parseFullForecast(daily: JSONObject): List<DailyForecast> {
+        Log.d("ViewModel_Parse", "Starting to parse full forecast...")
         val forecastList = mutableListOf<DailyForecast>()
         val timeArray = daily.getJSONArray("time")
         val weatherCodeArray = daily.getJSONArray("weather_code")
@@ -460,25 +487,44 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         val tempMinArray = daily.getJSONArray("temperature_2m_min")
 
         for (i in 0 until timeArray.length()) {
-            forecastList.add(
-                DailyForecast(
-                    date = timeArray.getString(i),
-                    weatherCode = weatherCodeArray.getInt(i),
-                    tempMax = tempMaxArray.getDouble(i),
-                    tempMin = tempMinArray.getDouble(i)
-                )
+            val dateString = formatTimestampToDateString(timeArray.getLong(i))
+            val forecast = DailyForecast(
+                date = dateString,
+                weatherCode = weatherCodeArray.getInt(i),
+                tempMax = tempMaxArray.getDouble(i),
+                tempMin = tempMinArray.getDouble(i)
             )
+            forecastList.add(forecast)
         }
+        Log.d("ViewModel_Parse", "Finished parsing. Total days: ${forecastList.size}")
         return forecastList
     }
 
-    private fun formatTime(dateTimeString: String): String {
+    private fun formatTimestampToDateString(timestamp: Long): String {
         return try {
-            val inputFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm", Locale.getDefault())
-            val outputFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
-            val date = inputFormat.parse(dateTimeString)
-            outputFormat.format(date!!)
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            sdf.timeZone = TimeZone.getTimeZone("UTC")
+            val date = Date(timestamp * 1000)
+            sdf.format(date)
+        } catch (e: Exception) {
+            "N/A"
+        }
+    }
+
+    private fun formatTimestampToTime(timestamp: Long): String {
+        return try {
+            val sdf = SimpleDateFormat("h:mm a", Locale.getDefault())
+            val date = Date(timestamp * 1000)
+            sdf.format(date)
         } catch (e: Exception) { "N/A" }
+    }
+
+    private fun formatTimestampToISO(timestamp: Long): String {
+        return try {
+            val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm", Locale.getDefault())
+            val date = Date(timestamp * 1000)
+            sdf.format(date)
+        } catch (e: Exception) { "" }
     }
 
     private fun getUvIndexRisk(uv: Double): String {
