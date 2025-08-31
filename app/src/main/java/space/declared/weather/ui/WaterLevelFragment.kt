@@ -121,7 +121,13 @@ class WaterLevelFragment : Fragment() {
                     // --- Handle List Display ---
                     listProgressBar.visibility = if (state.isLoading && state.stationListItems.isEmpty()) View.VISIBLE else View.GONE
                     stationListAdapter.setUnitSystem(state.unitSystem)
-                    stationListAdapter.submitList(state.stationListItems)
+
+                    stationListAdapter.submitList(state.stationListItems) {
+                        // runs AFTER the list has been updated in the RecyclerView
+                        if (state.stationSortType != SortType.NONE) {
+                            stationRecyclerView.scrollToPosition(0)
+                        }
+                    }
 
                     val isListEmpty = state.stationListItems.isEmpty() && !state.isLoading
                     noStationsTextView.visibility = if (isListEmpty) View.VISIBLE else View.GONE

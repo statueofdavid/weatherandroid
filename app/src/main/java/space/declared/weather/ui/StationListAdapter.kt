@@ -60,6 +60,7 @@ class StationDiffCallback : DiffUtil.ItemCallback<StationListItem>() {
     }
 
     override fun areContentsTheSame(oldItem: StationListItem, newItem: StationListItem): Boolean {
-        return oldItem == newItem
+        return oldItem.entity.name == newItem.entity.name &&
+                oldItem.distanceInMeters == newItem.distanceInMeters
     }
 }
