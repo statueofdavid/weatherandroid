@@ -47,6 +47,7 @@ data class DetailedDayWeather(
     val tempMax: String,
     val tempMin: String,
     val weatherDescription: String,
+    val solsticeCountdown: String,
     val uvIndex: String,
     val sunrise: String,
     val sunset: String,
@@ -100,6 +101,7 @@ data class WeatherUiState(
     val savedLocations: List<SavedLocation> = emptyList(),
     val unitSystem: String = "imperial",
     val sunPositionBias: Float = -1f,
+    val latitude: Double = 0.0,
     val timezone: String? = null,
     val moonData: MoonData? = null
 )
@@ -262,8 +264,9 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
                     it.copy(
                         isLoading = false,
                         cityName = name,
+                        latitude = latitude,
                         fullForecast = forecastList,
-                        selectedDayWeather = if (forecastList.isNotEmpty()) createDetailedWeatherForDay(forecastList[0], 0) else null,
+                        selectedDayWeather = if (forecastList.isNotEmpty()) createDetailedWeatherForDay(forecastList[0], 0, latitude) else null,
                         stationListItems = processStationList(stationItems, it.stationSortType),
                         timezone = timezone,
                         moonData = moonData
@@ -307,7 +310,7 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         val selectedDay = fullForecast[index]
         _uiState.update {
             it.copy(
-                selectedDayWeather = createDetailedWeatherForDay(selectedDay, index),
+                selectedDayWeather = createDetailedWeatherForDay(selectedDay, index, _uiState.value.latitude),
                 selectedDayIndex = index
             )
         }
@@ -429,13 +432,14 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun createDetailedWeatherForDay(day: DailyForecast, index: Int): DetailedDayWeather {
+    private fun createDetailedWeatherForDay(day: DailyForecast, index: Int, latitude: Double): DetailedDayWeather {
         val units = sharedPreferences.getString("units", "imperial") ?: "imperial"
         val windUnit = if (units == "imperial") "mph" else "kmh"
         val tempUnit = if (units == "imperial") "°F" else "°C"
 
         val daily = lastFullResponse?.getJSONObject("daily")
         val uv = daily?.getJSONArray("uv_index_max")?.optDouble(index, 0.0) ?: 0.0
+        val currentLatitude: Double = 0.0
 
         val sunriseTimestamp = daily?.getJSONArray("sunrise")?.optLong(index) ?: 0
         val sunsetTimestamp = daily?.getJSONArray("sunset")?.optLong(index) ?: 0
@@ -451,6 +455,16 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         var windVal: String? = null
         var windGustsVal: String? = null
         val isCurrent = index == 0
+
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        sdf.timeZone = TimeZone.getTimeZone("UTC")
+        val selectedDate = Calendar.getInstance()
+        try {
+            sdf.parse(day.date)?.let { selectedDate.time = it }
+        } catch (e: Exception) {
+            Log.e("WeatherViewModel", "Could not parse forecast date: ${day.date}", e)
+        }
+
 
         if (isCurrent && lastFullResponse != null) {
             val current = lastFullResponse!!.getJSONObject("current")
@@ -486,6 +500,7 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             tempMax = "${day.tempMax.roundToInt()}$tempUnit",
             tempMin = "${day.tempMin.roundToInt()}$tempUnit",
             weatherDescription = getWeatherDescriptionFromCode(day.weatherCode),
+            solsticeCountdown = getSolsticeCountdown(selectedDate,  latitude),
             uvIndex = "UV Index: ${uv.roundToInt()} (${getUvIndexRisk(uv)})",
             sunrise = "Sunrise: ${formatTimestampToTime(sunriseTimestamp)}",
             sunset = "Sunset: ${formatTimestampToTime(sunsetTimestamp)}",
@@ -592,5 +607,45 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
                 SortType.NONE -> list
             }
         }
+    }
+
+    private fun getSolsticeCountdown(forDate: Calendar, latitude: Double): String {
+        val now = forDate
+        val year = now.get(Calendar.YEAR)
+
+        // Define the approximate solstice dates
+        val juneSolstice = Calendar.getInstance().apply { set(year, Calendar.JUNE, 21) }
+        val decSolstice = Calendar.getInstance().apply { set(year, Calendar.DECEMBER, 21) }
+
+        val isNorthernHemisphere = latitude >= 0
+
+        val targetSolstice: Calendar
+        val solsticeName: String
+
+        when {
+            now.before(juneSolstice) -> {
+                targetSolstice = juneSolstice
+                solsticeName = if (isNorthernHemisphere) "Summer Solstice" else "Winter Solstice"
+            }
+            now.before(decSolstice) -> {
+                targetSolstice = decSolstice
+                solsticeName = if (isNorthernHemisphere) "Winter Solstice" else "Summer Solstice"
+            }
+            else -> {
+                // If past December solstice, the next one is in the following year
+                targetSolstice = Calendar.getInstance().apply { set(year + 1, Calendar.JUNE, 21) }
+                solsticeName = if (isNorthernHemisphere) "Summer Solstice" else "Winter Solstice"
+            }
+        }
+
+        // Check if today is the solstice
+        if (now.get(Calendar.DAY_OF_YEAR) == targetSolstice.get(Calendar.DAY_OF_YEAR) && now.get(Calendar.YEAR) == targetSolstice.get(Calendar.YEAR)) {
+            return "$solsticeName is Today!"
+        }
+
+        val diffMillis = targetSolstice.timeInMillis - now.timeInMillis
+        val days = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(diffMillis)
+
+        return "$days days until $solsticeName"
     }
 }

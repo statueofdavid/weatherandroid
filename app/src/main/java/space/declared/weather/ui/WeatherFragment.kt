@@ -55,6 +55,7 @@ class WeatherFragment : Fragment() {
     private lateinit var cityName: TextView
     private lateinit var temperature: TextView
     private lateinit var weatherDescription: TextView
+    private lateinit var solsticeCountDown: TextView
     private lateinit var uvIndex: TextView
     private lateinit var sunriseTime: TextView
     private lateinit var sunsetTime: TextView
@@ -125,6 +126,7 @@ class WeatherFragment : Fragment() {
         cityName = view.findViewById(R.id.cityName)
         temperature = view.findViewById(R.id.temperature)
         weatherDescription = view.findViewById(R.id.weatherDescription)
+        solsticeCountDown = view.findViewById(R.id.solsticeCountdown)
         uvIndex = view.findViewById(R.id.uvIndex)
         sunriseTime = view.findViewById(R.id.sunriseTime)
         sunsetTime = view.findViewById(R.id.sunsetTime)
@@ -204,6 +206,7 @@ class WeatherFragment : Fragment() {
                             // Use the combined temperature for the main display
                             temperature.text = "${details.tempMax} / ${details.tempMin}"
                             weatherDescription.text = details.weatherDescription
+                            solsticeCountDown.text = details.solsticeCountdown
                             uvIndex.text = details.uvIndex
                             sunriseTime.text = details.sunrise
                             sunsetTime.text = details.sunset

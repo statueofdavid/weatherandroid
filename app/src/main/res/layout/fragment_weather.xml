@@ -157,16 +157,16 @@
                         app:layout_constraintStart_toStartOf="@id/celestialArc"
                         app:layout_constraintEnd_toEndOf="@id/celestialArc" />
 
-                    <!-- UV Index -->
+                    <!-- Solstice Countdown -->
                     <TextView
-                        android:id="@+id/uvIndex"
+                        android:id="@+id/solsticeCountdown"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:textSize="16sp"
                         app:layout_constraintTop_toTopOf="parent"
                         app:layout_constraintEnd_toEndOf="parent"
                         app:layout_constraintStart_toStartOf="parent"
-                        tools:text="UV Index: 3 (Moderate)" />
+                        tools:text="178 days until Winter Solstice" />
 
                     <!-- Celestial Arc -->
                     <View
@@ -175,7 +175,7 @@
                         android:layout_height="150dp"
                         android:layout_marginTop="8dp"
                         android:background="@drawable/celestial_arc"
-                        app:layout_constraintTop_toBottomOf="@id/uvIndex"
+                        app:layout_constraintTop_toBottomOf="@id/solsticeCountdown"
                         app:layout_constraintEnd_toEndOf="parent"
                         app:layout_constraintStart_toStartOf="parent" />
 
@@ -242,6 +242,16 @@
                         android:layout_height="wrap_content"
                         android:orientation="vertical"
                         android:padding="16dp">
+                        <!-- UV Index -->
+                        <TextView
+                            android:id="@+id/uvIndex"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="16sp"
+                            app:layout_constraintTop_toTopOf="parent"
+                            app:layout_constraintEnd_toEndOf="parent"
+                            app:layout_constraintStart_toStartOf="parent"
+                            tools:text="UV Index: 3 (Moderate)" />
                         <TextView
                             android:id="@+id/pressure"
                             android:layout_width="wrap_content"
