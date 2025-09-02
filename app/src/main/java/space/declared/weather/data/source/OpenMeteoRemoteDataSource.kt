@@ -67,4 +67,18 @@ class OpenMeteoRemoteDataSource(context: Context) {
         )
         requestQueue.add(request)
     }
+
+    /**
+     * Fetches a dedicated set of hourly variables for lightning and thunderstorm potential.
+     */
+    fun fetchLightningData(latitude: Double, longitude: Double, callback: ApiCallback<JSONObject>) {
+        val hourlyParams = "lightning_potential,cape"
+        val url = "https://api.open-meteo.com/v1/forecast?latitude=$latitude&longitude=$longitude&hourly=$hourlyParams&timeformat=unixtime&timezone=auto"
+
+        val request = JsonObjectRequest(Request.Method.GET, url, null,
+            { response -> callback.onSuccess(response) },
+            { error -> callback.onError(error.message ?: "Unknown error fetching lightning data") }
+        )
+        requestQueue.add(request)
+    }
 }

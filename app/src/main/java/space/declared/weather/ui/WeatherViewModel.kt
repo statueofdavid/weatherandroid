@@ -6,6 +6,8 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.preference.PreferenceManager
+import androidx.work.PeriodicWorkRequest
+import androidx.work.WorkManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -29,6 +31,7 @@ import space.declared.weather.data.source.NoaaRemoteDataSource
 import space.declared.weather.data.source.OpenMeteoRemoteDataSource
 import space.declared.weather.data.source.UsgsRemoteDataSource
 import space.declared.weather.data.source.UsnoMoonDataSource
+import space.declared.weather.service.HazardNotifier
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -386,6 +389,21 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
                     location.isCurrentLocation)
             )
         }
+    }
+
+    fun startHazardAlerts() {
+        val hazardAlertRequest = PeriodicWorkRequest.Builder(
+            HazardNotifier::class.java,
+            30, TimeUnit.MINUTES // Default interval
+        )
+            .addTag("hazard_notifier_work")
+            .build()
+
+        WorkManager.getInstance(getApplication()).enqueue(hazardAlertRequest)
+    }
+
+    fun stopHazardAlerts() {
+        WorkManager.getInstance(getApplication()).cancelAllWorkByTag("hazard_notifier_work")
     }
 
     // --- PRIVATE HELPER FUNCTIONS ---

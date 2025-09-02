@@ -17,6 +17,7 @@ preferenceKtx = "1.2.1"
 room = "2.6.1"
 kotlin = "2.0.0"
 ksp = "2.0.0-1.0.21"
+work-runtime-ktx = "2.10.3"
 
 [libraries]
 androidx-activity-ktx = { group = "androidx.activity", name = "activity-ktx", version.ref = "activityKtx" }
@@ -38,6 +39,7 @@ androidx-preference-ktx = { group = "androidx.preference", name = "preference-kt
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
+androidx-work-runtime-ktx = {group = "androidx.work", name = "work-runtime-ktx", version.ref = "work-runtime-ktx"}
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
