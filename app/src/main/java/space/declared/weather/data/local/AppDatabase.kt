@@ -8,7 +8,7 @@ import androidx.room.RoomDatabase
 /**
  * The Room database for the application.
  */
-@Database(entities = [StationEntity::class, SavedLocationEntity::class], version = 4, exportSchema = false)
+@Database(entities = [StationEntity::class, SavedLocationEntity::class], version = 9, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun stationDao(): StationDao

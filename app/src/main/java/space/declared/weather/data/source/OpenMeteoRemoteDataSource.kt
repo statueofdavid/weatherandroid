@@ -4,8 +4,12 @@ import android.content.Context
 import com.android.volley.Request
 import com.android.volley.toolbox.JsonObjectRequest
 import com.android.volley.toolbox.Volley
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
 import space.declared.weather.data.CityResult
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * Handles all network operations to fetch data from the Open-Meteo API.
@@ -71,14 +75,29 @@ class OpenMeteoRemoteDataSource(context: Context) {
     /**
      * Fetches a dedicated set of hourly variables for lightning and thunderstorm potential.
      */
-    fun fetchLightningData(latitude: Double, longitude: Double, callback: ApiCallback<JSONObject>) {
-        val hourlyParams = "lightning_potential,cape"
-        val url = "https://api.open-meteo.com/v1/forecast?latitude=$latitude&longitude=$longitude&hourly=$hourlyParams&timeformat=unixtime&timezone=auto"
+    @OptIn(ExperimentalCoroutinesApi::class)
+    suspend fun fetchLightningData(latitude: Double, longitude: Double): JSONObject {
+        return suspendCancellableCoroutine { continuation ->
+            val hourlyParams = "lightning_potential,cape"
+            val url = "https://api.open-meteo.com/v1/forecast?latitude=$latitude&longitude=$longitude&hourly=$hourlyParams&timeformat=unixtime&timezone=auto"
 
-        val request = JsonObjectRequest(Request.Method.GET, url, null,
-            { response -> callback.onSuccess(response) },
-            { error -> callback.onError(error.message ?: "Unknown error fetching lightning data") }
-        )
-        requestQueue.add(request)
+            val request = JsonObjectRequest(Request.Method.GET, url, null,
+                { response ->
+                    if (continuation.isActive) {
+                        continuation.resume(response)
+                    }
+                },
+                { error ->
+                    if (continuation.isActive) {
+                        continuation.resumeWithException(Exception(error.message ?: "Unknown error fetching lightning data"))
+                    }
+                }
+            )
+            requestQueue.add(request)
+
+            continuation.invokeOnCancellation {
+                request.cancel()
+            }
+        }
     }
 }

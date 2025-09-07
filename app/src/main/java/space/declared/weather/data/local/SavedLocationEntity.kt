@@ -22,5 +22,10 @@ data class SavedLocationEntity(
     val longitude: Double,
     val timestamp: Long,
     val timezone: String?,
-    val isCurrentLocation: Boolean = false
+    val isCurrentLocation: Boolean = false,
+    val notificationsEnabled: Boolean = false,
+    val context: String? = null,
+    val lastHazardCheck: Long? = null,
+    val capeLevel: String? = null,
+    val lightningRisk: String? = null
 )

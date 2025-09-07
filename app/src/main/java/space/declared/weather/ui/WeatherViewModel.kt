@@ -6,6 +6,10 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.preference.PreferenceManager
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequest
 import androidx.work.PeriodicWorkRequest
 import androidx.work.WorkManager
 import kotlinx.coroutines.Job
@@ -28,6 +32,7 @@ import space.declared.weather.data.local.AppDatabase
 import space.declared.weather.data.local.SavedLocationEntity
 import space.declared.weather.data.local.StationLocalDataSource
 import space.declared.weather.data.source.NoaaRemoteDataSource
+import space.declared.weather.data.source.NominatimRemoteDataSource
 import space.declared.weather.data.source.OpenMeteoRemoteDataSource
 import space.declared.weather.data.source.UsgsRemoteDataSource
 import space.declared.weather.data.source.UsnoMoonDataSource
@@ -73,7 +78,12 @@ data class SavedLocation(
     val longitude: Double,
     val timestamp: Long,
     val timezone: String?,
-    val isCurrentLocation: Boolean
+    val isCurrentLocation: Boolean,
+    val notificationsEnabled: Boolean,
+    val context: String? = null,
+    val lastHazardCheck: Long?,
+    val capeLevel: String? = null,
+    val lightningRisk: String? = null
 )
 
 enum class SortType {
@@ -119,7 +129,6 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
 
     private var sunPositionUpdaterJob: Job? = null
     private var lastFullResponse: JSONObject? = null
-    private var hasInitialDataBeenFetched = false
 
     private var lastUserLocation: Location? = null
     private var originalStationList: List<StationListItem> = emptyList()
@@ -132,6 +141,7 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         val noaaDataSource = NoaaRemoteDataSource(application)
         val usgsDataSource = UsgsRemoteDataSource(application)
         val moonDataSource = UsnoMoonDataSource(application)
+        val nominatimDataSource = NominatimRemoteDataSource(application)
 
         repository = WeatherRepository(
             application,
@@ -139,6 +149,7 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             noaaDataSource,
             usgsDataSource,
             moonDataSource,
+            nominatimDataSource,
             localDataSource,
             database.savedLocationDao()
         )
@@ -156,7 +167,12 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
                         entity.longitude,
                         entity.timestamp,
                         entity.timezone,
-                        entity.isCurrentLocation
+                        entity.isCurrentLocation,
+                        entity.notificationsEnabled,
+                        entity.context,
+                        entity.lastHazardCheck,
+                        entity.capeLevel,
+                        entity.lightningRisk
                     )
                 }
                 isSyncing to savedLocations
@@ -254,14 +270,16 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
                 val weatherDataDeferred = async { fetchWeatherSuspend(latitude, longitude) }
                 val stationDataDeferred = async { fetchNearbyStationsSuspend(latitude, longitude) }
                 val moonDataDeferred = async { repository.fetchMoonData(Date(), latitude, longitude) }
+                val contextDeferred = async { repository.fetchLocationContext(latitude, longitude) }
 
                 val (forecastList, timezone) = weatherDataDeferred.await()
                 Log.d("ViewModel_Fetch", "Weather data received. Forecast items: ${forecastList.size}, Timezone: $timezone")
 
                 val stationItems = stationDataDeferred.await()
                 val moonData = moonDataDeferred.await()
+                val context = contextDeferred.await()
 
-                saveLocation(name, latitude, longitude, timezone)
+                saveLocation(name, latitude, longitude, timezone, context)
 
                 _uiState.update {
                     it.copy(
@@ -362,7 +380,13 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(cityList = emptyList()) }
     }
 
-    fun saveLocation(name: String, latitude: Double, longitude: Double, timezone: String?) {
+    fun saveLocation(
+        name: String,
+        latitude: Double,
+        longitude: Double,
+        timezone: String?,
+        context: String?
+    ) {
         viewModelScope.launch {
             repository.saveLocation(
                 SavedLocationEntity(
@@ -370,8 +394,14 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
                     latitude = latitude,
                     longitude = longitude,
                     timestamp = System.currentTimeMillis(),
-                    timezone = timezone
-                )
+                    timezone = timezone,
+                    isCurrentLocation = (name == "Current Location"), // Set this based on the name
+                    notificationsEnabled = false,  // <-- Default to OFF
+                    context = context,             // <-- Pass the context from Nominatim
+                    lastHazardCheck = null,        // <-- Default to null
+                    capeLevel = null,             // <-- Default to null
+                    lightningRisk = null
+                    )
             )
         }
     }
@@ -386,8 +416,47 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
                     location.longitude,
                     location.timestamp,
                     location.timezone,
-                    location.isCurrentLocation)
+                    location.isCurrentLocation,
+                    location.notificationsEnabled,
+                    location.context,
+                    location.lastHazardCheck,
+                    location.capeLevel,
+                    location.lightningRisk)
             )
+        }
+    }
+
+    fun toggleHazardAlertsForLocation(location: SavedLocation, isEnabled: Boolean) {
+        viewModelScope.launch {
+            val updatedEntity = location.toEntity().copy(notificationsEnabled = isEnabled)
+            repository.updateLocation(updatedEntity)
+
+            if (isEnabled) {
+                // 1. Always ensure the 30-minute periodic worker is scheduled
+                startHazardAlerts()
+
+                // --- YOUR NEW LOGIC GOES HERE ---
+                val tenMinutesAgo = System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(10)
+
+                // Only run the immediate check if we DON'T have a recent successful check
+                if (location.lastHazardCheck == null || location.lastHazardCheck < tenMinutesAgo) {
+
+                    // We don't have recent data, so run the immediate check
+                    val constraints = Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
+
+                    val immediateCheckRequest = OneTimeWorkRequest.Builder(HazardNotifier::class.java)
+                        .addTag("immediate_hazard_check")
+                        .setConstraints(constraints)
+                        .build()
+                    WorkManager.getInstance(getApplication()).enqueue(immediateCheckRequest)
+                }
+                // If we *do* have recent data, we do nothing. The UI is already up to date.
+
+            } else {
+                checkIfAllAlertsAreDisabled()
+            }
         }
     }
 
@@ -399,7 +468,22 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             .addTag("hazard_notifier_work")
             .build()
 
-        WorkManager.getInstance(getApplication()).enqueue(hazardAlertRequest)
+        WorkManager.getInstance(getApplication()).enqueueUniquePeriodicWork(
+            "HazardNotifierWork",
+            ExistingPeriodicWorkPolicy.KEEP,
+            hazardAlertRequest
+        )
+    }
+
+    private fun checkIfAllAlertsAreDisabled() {
+        viewModelScope.launch {
+            // Ask the repository if any locations still have alerts enabled
+            val enabledCount = repository.getEnabledAlertsCount()
+            if (enabledCount == 0) {
+                // No locations need alerts, so we can stop the 30-minute periodic worker.
+                stopHazardAlerts()
+            }
+        }
     }
 
     fun stopHazardAlerts() {
@@ -407,6 +491,23 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
     }
 
     // --- PRIVATE HELPER FUNCTIONS ---
+
+    private fun SavedLocation.toEntity(): SavedLocationEntity {
+        return SavedLocationEntity(
+            id = this.id,
+            name = this.name,
+            latitude = this.latitude,
+            longitude = this.longitude,
+            timestamp = this.timestamp,
+            timezone = this.timezone,
+            isCurrentLocation = this.isCurrentLocation,
+            notificationsEnabled = this.notificationsEnabled,
+            context = this.context,
+            lastHazardCheck = this.lastHazardCheck,
+            capeLevel = this.capeLevel,
+            lightningRisk = this.lightningRisk
+        )
+    }
 
     private suspend fun fetchWeatherSuspend(latitude: Double, longitude: Double): Pair<List<DailyForecast>, String?> {
         return suspendCancellableCoroutine { continuation ->

@@ -17,10 +17,9 @@ import space.declared.weather.data.local.StationLocalDataSource
 import space.declared.weather.data.local.SavedLocationDao
 import space.declared.weather.data.source.NoaaRemoteDataSource
 import space.declared.weather.data.source.OpenMeteoRemoteDataSource
-import space.declared.weather.data.TideData
 import space.declared.weather.data.source.UsgsRemoteDataSource
-import space.declared.weather.data.WaterLevelData
 import space.declared.weather.data.local.SavedLocationEntity
+import space.declared.weather.data.source.NominatimRemoteDataSource
 import space.declared.weather.data.source.UsnoMoonDataSource
 import java.util.Date
 import java.util.concurrent.TimeUnit
@@ -31,6 +30,7 @@ class WeatherRepository(
     private val noaaDataSource: NoaaRemoteDataSource,
     private val usgsDataSource: UsgsRemoteDataSource,
     private val moonDataSource: UsnoMoonDataSource,
+    private val nominatimDataSource: NominatimRemoteDataSource,
     private val localDataSource: StationLocalDataSource,
     private val savedLocationDao: SavedLocationDao
 ) {
@@ -45,8 +45,20 @@ class WeatherRepository(
         syncStationsIfNeeded()
     }
 
+    suspend fun getEnabledAlertsCount(): Int {
+        return savedLocationDao.getEnabledAlertsCount()
+    }
+
+    suspend fun fetchLocationContext(latitude: Double, longitude: Double): String? {
+        return nominatimDataSource.getQuirkyLocationContext(latitude, longitude)
+    }
+
     suspend fun fetchMoonData(date: Date, latitude: Double, longitude: Double): MoonData? {
         return moonDataSource.fetchMoonPhase(date, latitude, longitude)
+    }
+
+    suspend fun updateLocation(location: SavedLocationEntity) {
+        savedLocationDao.update(location)
     }
 
     suspend fun saveLocation(location: SavedLocationEntity) {

@@ -1,11 +1,19 @@
 package space.declared.weather.ui
 
 import SavedLocationsAdapter
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.widget.FrameLayout
+import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.Lifecycle
@@ -29,6 +37,17 @@ class MainActivity : AppCompatActivity() {
     private lateinit var navController: NavController
     private lateinit var savedLocationsAdapter: SavedLocationsAdapter
 
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            // Permission is granted. We can now send notifications.
+        } else {
+            // Permission denied. Tell the user why this matters.
+            Toast.makeText(this, "Notifications will be disabled", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -48,8 +67,25 @@ class MainActivity : AppCompatActivity() {
         // --- Set up the UI components by calling helper functions ---
         setSupportActionBar(toolbar)
         setupBottomNav(bottomNavView)
+
+        askForNotificationPermission()
         // This combined function ensures the adapter is created before it's used.
         setupDrawerAndObserve(navDrawerContainer)
+
+        val drawerCallback = object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() {
+                drawerLayout.closeDrawer(GravityCompat.START)
+            }
+        }
+        onBackPressedDispatcher.addCallback(this, drawerCallback)
+        drawerLayout.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
+            override fun onDrawerOpened(drawerView: View) {
+                drawerCallback.isEnabled = true
+            }
+            override fun onDrawerClosed(drawerView: View) {
+                drawerCallback.isEnabled = false
+            }
+        })
     }
 
     private fun setupBottomNav(bottomNavView: BottomNavigationView) {
@@ -104,6 +140,9 @@ class MainActivity : AppCompatActivity() {
 
         // Create and configure the adapter that handles clicks
         savedLocationsAdapter = SavedLocationsAdapter(
+            onSwitchToggled = { location, isEnabled ->
+                viewModel.toggleHazardAlertsForLocation(location, isEnabled)
+            },
             onLocationClicked = { location ->
                 // Close the details card to prevent showing stale data.
                 viewModel.onDetailCardClosed()
@@ -127,11 +166,15 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onBackPressed() {
-        if (drawerLayout.isDrawerOpen(GravityCompat.START)) {
-            drawerLayout.closeDrawer(GravityCompat.START)
-        } else {
-            super.onBackPressed()
+    private fun askForNotificationPermission() {
+        // This is only required for Android 13 (API 33) and higher
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                // Launch the permission dialog
+                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
     }
 }

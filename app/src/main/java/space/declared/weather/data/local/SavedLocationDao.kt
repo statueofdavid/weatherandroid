@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -45,4 +46,22 @@ interface SavedLocationDao {
 
     @Query("SELECT * FROM saved_locations WHERE name = :name LIMIT 1")
     suspend fun getLocationByName(name: String): SavedLocationEntity?
+
+    /**
+     * Retrieves all locations where the user has enabled notifications.
+     * The `WHERE notificationsEnabled = 1` clause filters for rows where the flag is true.
+     */
+    @Query("SELECT * FROM saved_locations WHERE notificationsEnabled = 1")
+    suspend fun getLocationsWithNotificationsEnabled(): List<SavedLocationEntity>
+
+    /**
+     * Updates an existing location. This will be used by the UI to toggle
+     * the notification setting on or off.
+     */
+    @Update
+    suspend fun update(location: SavedLocationEntity)
+
+    @Query("SELECT COUNT(*) FROM saved_locations WHERE notificationsEnabled = 1")
+    suspend fun getEnabledAlertsCount(): Int
+
 }

@@ -8,6 +8,7 @@
     <string name="appearance_category_title">Appearance</string>
     <string name="dark_mode_option">Mode</string>
     <string name="sync_now_button_title">Sync Now</string>
+    <string name="delete_location_description">This deletes a saved location</string>
 
     <!-- Unit Preference -->
     <string-array name="unit_entries">
