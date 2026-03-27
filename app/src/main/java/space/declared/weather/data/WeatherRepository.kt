@@ -116,12 +116,12 @@ class WeatherRepository(
         }
     }
 
-    fun getCityList(query: String, callback: OpenMeteoRemoteDataSource.ApiCallback<List<CityResult>>) {
-        openMeteoDataSource.fetchCityList(query, callback)
+    suspend fun getCityList(query: String): List<CityResult> {
+        return openMeteoDataSource.fetchCityList(query)
     }
 
-    fun fetchWeatherData(latitude: Double, longitude: Double, units: String, callback: OpenMeteoRemoteDataSource.ApiCallback<JSONObject>) {
-        openMeteoDataSource.fetchWeatherData(latitude, longitude, units, callback)
+    suspend fun fetchWeatherData(lat: Double, lon: Double, units: String): JSONObject {
+        return openMeteoDataSource.fetchWeatherData(lat, lon, units)
     }
 
     suspend fun getNearbyStations(latitude: Double, longitude: Double, radius: Double): List<StationEntity> {

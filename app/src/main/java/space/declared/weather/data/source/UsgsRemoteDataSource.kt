@@ -11,6 +11,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
+import space.declared.weather.data.CurrentWaterData
 import space.declared.weather.data.WaterLevelData
 import space.declared.weather.data.local.StationEntity
 import java.util.Locale
@@ -134,5 +135,67 @@ class UsgsRemoteDataSource(context: Context) {
             }
         )
         requestQueue.add(jsonObjectRequest)
+    }
+
+    /**
+     * Fetches the latest instantaneous values for both streamflow (00060) and
+     * gauge height (00065) for a single USGS station.
+     * This is a suspend function designed for use in coroutines.
+     */
+    suspend fun fetchWaterDataForStation(stationId: String): CurrentWaterData? {
+        // Note the parameter codes: 00060 for streamflow, 00065 for gauge height
+        val url = "https://waterservices.usgs.gov/nwis/iv/?format=json&sites=$stationId&parameterCd=00060,00065&siteStatus=active"
+        Log.d(TAG, "Fetching water data for station $stationId")
+
+        return suspendCancellableCoroutine { continuation ->
+            val request = JsonObjectRequest(Request.Method.GET, url, null,
+                { response ->
+                    try {
+                        val timeSeriesArray = response.getJSONObject("value").getJSONArray("timeSeries")
+                        if (timeSeriesArray.length() == 0) {
+                            if (continuation.isActive) continuation.resume(null)
+                            return@JsonObjectRequest
+                        }
+
+                        // We expect two timeSeries objects, one for each parameter.
+                        // We'll parse them and store the results here.
+                        var flowRate: Double? = null
+                        var gaugeHeight: Double? = null
+
+                        val sourceInfo = timeSeriesArray.getJSONObject(0).getJSONObject("sourceInfo")
+                        val stationName = sourceInfo.getString("siteName")
+
+                        for (i in 0 until timeSeriesArray.length()) {
+                            val series = timeSeriesArray.getJSONObject(i)
+                            val variableCode = series.getJSONObject("variable")
+                                .getJSONArray("variableCode")
+                                .getJSONObject(0)
+                                .getString("value")
+
+                            val valuesArray = series.getJSONArray("values").getJSONObject(0).getJSONArray("value")
+                            if (valuesArray.length() > 0) {
+                                val value = valuesArray.getJSONObject(0).getString("value").toDoubleOrNull()
+                                when (variableCode) {
+                                    "00060" -> flowRate = value // Streamflow
+                                    "00065" -> gaugeHeight = value // Gauge Height
+                                }
+                            }
+                        }
+
+                        val waterData = CurrentWaterData(stationId, stationName, flowRate, gaugeHeight)
+                        if (continuation.isActive) continuation.resume(waterData)
+
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error parsing water data for station $stationId", e)
+                        if (continuation.isActive) continuation.resume(null)
+                    }
+                },
+                { error ->
+                    Log.e(TAG, "Water data request failed for station $stationId", error)
+                    if (continuation.isActive) continuation.resume(null)
+                }
+            )
+            requestQueue.add(request)
+        }
     }
 }

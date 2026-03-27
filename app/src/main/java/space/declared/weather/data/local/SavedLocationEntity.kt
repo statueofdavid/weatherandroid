@@ -27,5 +27,13 @@ data class SavedLocationEntity(
     val context: String? = null,
     val lastHazardCheck: Long? = null,
     val capeLevel: String? = null,
-    val lightningRisk: String? = null
+    val lightningRisk: String? = null,
+    val usgsStationId: String? = null,
+    val windSpeedAlertEnabled: Boolean = false,
+    val windSpeedAlertThreshold: Double? = null,
+    val flowRateAlertEnabled: Boolean = false,
+    val flowRateAlertThreshold: Double? = null,
+    val lastConditionCheck: Long? = null,
+    val currentWindSpeed: Double? = null,
+    val currentFlowRate: Double? = null
 )

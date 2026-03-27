@@ -23,33 +23,60 @@ class OpenMeteoRemoteDataSource(context: Context) {
         fun onError(error: String)
     }
 
-    fun fetchCityList(query: String, callback: ApiCallback<List<CityResult>>) {
+//    fun fetchCityList(query: String, callback: ApiCallback<List<CityResult>>) {
+//        val url = "https://geocoding-api.open-meteo.com/v1/search?name=$query&count=5&language=en&format=json"
+//
+//        val jsonObjectRequest = JsonObjectRequest(Request.Method.GET, url, null,
+//            { response ->
+//                val resultsArray = response.optJSONArray("results")
+//                if (resultsArray == null || resultsArray.length() == 0) {
+//                    callback.onSuccess(emptyList())
+//                    return@JsonObjectRequest
+//                }
+//
+//                val cityResults = List(resultsArray.length()) { i ->
+//                    CityResult.fromJson(resultsArray.getJSONObject(i))
+//                }
+//                callback.onSuccess(cityResults)
+//            },
+//            { error ->
+//                callback.onError(error.message ?: "Unknown error fetching city list")
+//            }
+//        )
+//        requestQueue.add(jsonObjectRequest)
+//    }
+
+    // Change to 'suspend' and return 'List<CityResult>' directly
+    suspend fun fetchCityList(query: String): List<CityResult> {
         val url = "https://geocoding-api.open-meteo.com/v1/search?name=$query&count=5&language=en&format=json"
 
-        val jsonObjectRequest = JsonObjectRequest(Request.Method.GET, url, null,
-            { response ->
-                val resultsArray = response.optJSONArray("results")
-                if (resultsArray == null || resultsArray.length() == 0) {
-                    callback.onSuccess(emptyList())
-                    return@JsonObjectRequest
-                }
+        return suspendCancellableCoroutine { continuation ->
+            val jsonObjectRequest = JsonObjectRequest(Request.Method.GET, url, null,
+                { response ->
+                    val resultsArray = response.optJSONArray("results")
+                    if (resultsArray == null || resultsArray.length() == 0) {
+                        continuation.resume(emptyList()) // Resume with empty list
+                        return@JsonObjectRequest
+                    }
 
-                val cityResults = List(resultsArray.length()) { i ->
-                    CityResult.fromJson(resultsArray.getJSONObject(i))
+                    val cityResults = List(resultsArray.length()) { i ->
+                        CityResult.fromJson(resultsArray.getJSONObject(i))
+                    }
+                    continuation.resume(cityResults) // Resume with actual results
+                },
+                { error ->
+                    continuation.resumeWithException(Exception(error.message ?: "Search failed"))
                 }
-                callback.onSuccess(cityResults)
-            },
-            { error ->
-                callback.onError(error.message ?: "Unknown error fetching city list")
-            }
-        )
-        requestQueue.add(jsonObjectRequest)
+            )
+            requestQueue.add(jsonObjectRequest)
+            continuation.invokeOnCancellation { jsonObjectRequest.cancel() }
+        }
     }
 
     /**
      * Fetches the full weather data, including current, hourly, and daily summaries.
      */
-    fun fetchWeatherData(latitude: Double, longitude: Double, units: String, callback: ApiCallback<JSONObject>) {
+    suspend fun fetchWeatherData(latitude: Double, longitude: Double, units: String): JSONObject {
         val tempUnit = if (units == "imperial") "fahrenheit" else "celsius"
         val windUnit = if (units == "imperial") "mph" else "kmh"
 
@@ -65,11 +92,38 @@ class OpenMeteoRemoteDataSource(context: Context) {
         // Construct the final URL with all necessary parameters
         val url = "https://api.open-meteo.com/v1/forecast?latitude=$latitude&longitude=$longitude&current=$currentParams&hourly=$hourlyParams&daily=$dailyParams&temperature_unit=$tempUnit&wind_speed_unit=$windUnit&timeformat=unixtime&timezone=auto"
 
-        val request = JsonObjectRequest(Request.Method.GET, url, null,
-            { response -> callback.onSuccess(response) },
-            { error -> callback.onError(error.message ?: "Unknown error fetching weather data") }
-        )
-        requestQueue.add(request)
+        return suspendCancellableCoroutine { continuation ->
+            val request = JsonObjectRequest(Request.Method.GET, url, null,
+                { response ->
+                    if (continuation.isActive) {
+                        continuation.resume(response) // This returns the JSONObject directly
+                    }
+                },
+                { error ->
+                    if (continuation.isActive) {
+                        continuation.resumeWithException(Exception(error.message ?: "Unknown error"))
+                    }
+                }
+            )
+            requestQueue.add(request)
+            continuation.invokeOnCancellation { request.cancel() }
+        }
+//        return suspendCancellableCoroutine { continuation ->
+//            val request = JsonObjectRequest(Request.Method.GET, url, null,
+//                { response ->
+//                    if (continuation.isActive) {
+//                        continuation.resume(response)
+//                    }
+//                },
+//                { error ->
+//                    if (continuation.isActive) {
+//                        continuation.resumeWithException(Exception(error.message ?: "Unknown error fetching weather data"))
+//                    }
+//                }
+//            )
+//            requestQueue.add(request)
+//            continuation.invokeOnCancellation { request.cancel() }
+//        }
     }
 
     /**

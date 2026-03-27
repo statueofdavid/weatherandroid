@@ -37,17 +37,14 @@ class HazardNotifier(
                     var shouldAlert = false
                     var alertMessage: String? = null
 
-                    // --- THIS IS THE NEW PART ---
-                    // This try...catch is INSIDE the async block.
-                    // It handles errors on a PER-LOCATION basis.
                     try {
-                        // 1. NETWORK CALL
+                        // NETWORK CALL
                         val lightningData = openMeteoRemoteDataSource.fetchLightningData(
                             location.latitude,
                             location.longitude
                         )
 
-                        // 2. JSON PARSING & LOGIC
+                        // JSON PARSING & LOGIC
                         val hourly = lightningData.getJSONObject("hourly")
                         val capeArray = hourly.getJSONArray("cape")
                         val lightningArray = hourly.getJSONArray("lightning_potential")
@@ -96,16 +93,14 @@ class HazardNotifier(
                         finalCapeStatus = "Error"
                         finalLightningStatus = "N/A"
                     }
-                    // --- END OF NEW TRY...CATCH BLOCK ---
 
 
-                    // 3. SEND NOTIFICATION (if we determined we should)
+                    // SEND NOTIFICATION (if we determined we should)
                     alertMessage?.let {
                         sendNotification(location.name, it)
                     }
 
-                    // 4. ALWAYS UPDATE THE DATABASE
-                    // This will save EITHER the real status OR the error message.
+                    // UPDATE THE DATABASE
                     val updatedLocation = location.copy(
                         lastHazardCheck = System.currentTimeMillis(),
                         capeLevel = finalCapeStatus,
@@ -115,19 +110,11 @@ class HazardNotifier(
                 }
             }
 
-            // This waits for all parallel jobs to finish
             lightningChecks.awaitAll()
-
-            // If the whole process finishes (even if some locations failed gracefully),
-            // the *worker* itself was successful.
             Result.success()
 
         } catch (e: Exception) {
-            // This outer catch now only runs for CATASTROPHIC failures
-            // (like being unable to read the database at all).
             Log.e("HazardNotifier", "Catastrophic worker failure. Won't retry.", e)
-            // We return FAILURE here to stop the "retry loop" you were seeing.
-            // The 30-minute periodic worker will just try again later.
             Result.failure()
         }
     }
@@ -150,12 +137,11 @@ class HazardNotifier(
         val notification = NotificationCompat.Builder(appContext, channelId)
             .setContentTitle("Environmental Alert: $locationName")
             .setContentText(message)
-            .setSmallIcon(R.drawable.ic_launcher_foreground) // Replace with a proper icon
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .build()
 
-        // Use a unique ID for each location to avoid overwriting notifications
         notificationManager.notify(locationName.hashCode(), notification)
     }
 }

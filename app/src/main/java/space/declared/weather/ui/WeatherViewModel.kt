@@ -83,7 +83,15 @@ data class SavedLocation(
     val context: String? = null,
     val lastHazardCheck: Long?,
     val capeLevel: String? = null,
-    val lightningRisk: String? = null
+    val lightningRisk: String? = null,
+    val usgsStationId: String? = null,
+    val windSpeedAlertEnabled: Boolean = false,
+    val windSpeedAlertThreshold: Double? = null,
+    val flowRateAlertEnabled: Boolean = false,
+    val flowRateAlertThreshold: Double? = null,
+    val lastConditionCheck: Long? = null,
+    val currentWindSpeed: Double? = null,
+    val currentFlowRate: Double? = null
 )
 
 enum class SortType {
@@ -172,7 +180,15 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
                         entity.context,
                         entity.lastHazardCheck,
                         entity.capeLevel,
-                        entity.lightningRisk
+                        entity.lightningRisk,
+                        entity.usgsStationId,
+                        entity.windSpeedAlertEnabled,
+                        entity.windSpeedAlertThreshold,
+                        entity.flowRateAlertEnabled,
+                        entity.flowRateAlertThreshold,
+                        entity.lastConditionCheck,
+                        entity.currentWindSpeed,
+                        entity.currentFlowRate
                     )
                 }
                 isSyncing to savedLocations
@@ -235,8 +251,12 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
 
     fun onCitySearch(query: String) {
         _uiState.update { it.copy(isLoading = true) }
-        repository.getCityList(query, object : OpenMeteoRemoteDataSource.ApiCallback<List<CityResult>> {
-            override fun onSuccess(result: List<CityResult>) {
+
+        viewModelScope.launch {
+            try {
+                // This now returns List<CityResult> instead of Unit
+                val result = repository.getCityList(query)
+
                 _uiState.update {
                     it.copy(
                         isLoading = false,
@@ -244,12 +264,29 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
                         error = if (result.isEmpty()) "City not found" else null
                     )
                 }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = e.message) }
             }
-            override fun onError(error: String) {
-                _uiState.update { it.copy(isLoading = false, error = error) }
-            }
-        })
+        }
     }
+
+//    fun onCitySearch(query: String) {
+//        _uiState.update { it.copy(isLoading = true) }
+//        repository.getCityList(query, object : OpenMeteoRemoteDataSource.ApiCallback<List<CityResult>> {
+//            override fun onSuccess(result: List<CityResult>) {
+//                _uiState.update {
+//                    it.copy(
+//                        isLoading = false,
+//                        cityList = result,
+//                        error = if (result.isEmpty()) "City not found" else null
+//                    )
+//                }
+//            }
+//            override fun onError(error: String) {
+//                _uiState.update { it.copy(isLoading = false, error = error) }
+//            }
+//        })
+//    }
 
     fun fetchInitialData(latitude: Double, longitude: Double, name: String) {
         if (_uiState.value.isLoading) {
@@ -267,8 +304,17 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             try {
                 Log.d("ViewModel_Fetch", "Starting initial data fetch for $name")
-                val weatherDataDeferred = async { fetchWeatherSuspend(latitude, longitude) }
-                val stationDataDeferred = async { fetchNearbyStationsSuspend(latitude, longitude) }
+                val weatherDataDeferred = async { fetchWeatherSuspend(latitude, longitude, units) }
+
+                val stationDataDeferred = async {
+                    try {
+                        fetchNearbyStationsSuspend(latitude, longitude)
+                    } catch (e: Exception) {
+                        Log.e("ViewModel_Fetch", "USGS Station fetch failed, skipping stations", e)
+                        emptyList<StationListItem>()
+                    }
+                }
+
                 val moonDataDeferred = async { repository.fetchMoonData(Date(), latitude, longitude) }
                 val contextDeferred = async { repository.fetchLocationContext(latitude, longitude) }
 
@@ -505,24 +551,34 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             context = this.context,
             lastHazardCheck = this.lastHazardCheck,
             capeLevel = this.capeLevel,
-            lightningRisk = this.lightningRisk
+            lightningRisk = this.lightningRisk,
+            usgsStationId = this.usgsStationId,
+            windSpeedAlertEnabled = this.windSpeedAlertEnabled,
+            windSpeedAlertThreshold = this.windSpeedAlertThreshold,
+            flowRateAlertEnabled = this.flowRateAlertEnabled,
+            flowRateAlertThreshold = this.flowRateAlertThreshold,
+            lastConditionCheck = this.lastConditionCheck,
+            currentWindSpeed = this.currentWindSpeed,
+            currentFlowRate = this.currentFlowRate
         )
     }
 
-    private suspend fun fetchWeatherSuspend(latitude: Double, longitude: Double): Pair<List<DailyForecast>, String?> {
-        return suspendCancellableCoroutine { continuation ->
-            val units = sharedPreferences.getString("units", "metric") ?: "metric"
-            repository.fetchWeatherData(latitude, longitude, units, object : OpenMeteoRemoteDataSource.ApiCallback<JSONObject> {
-                override fun onSuccess(result: JSONObject) {
-                    lastFullResponse = result
-                    val forecast = parseFullForecast(result.getJSONObject("daily"))
-                    val timezone = result.optString("timezone", null)
-                    if (continuation.isActive) continuation.resume(Pair(forecast, timezone))
-                }
-                override fun onError(error: String) {
-                    if (continuation.isActive) continuation.resumeWithException(Exception(error))
-                }
-            })
+    private suspend fun fetchWeatherSuspend(latitude: Double, longitude: Double, units: String): Pair<List<DailyForecast>, String?> {
+        return try {
+            // Force the cast to org.json.JSONObject to resolve the reference issues
+            val result = repository.fetchWeatherData(latitude, longitude, units) as JSONObject
+
+            lastFullResponse = result
+
+            // Now the IDE will recognize getJSONObject and optString
+            val dailyJson = result.getJSONObject("daily")
+            val forecast = parseFullForecast(dailyJson)
+            val timezone = result.optString("timezone", null)
+
+            Pair(forecast, timezone)
+        } catch (e: Exception) {
+            Log.e("WeatherViewModel", "Fetch failed", e)
+            throw e
         }
     }
 
@@ -763,7 +819,7 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         }
 
         val diffMillis = targetSolstice.timeInMillis - now.timeInMillis
-        val days = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(diffMillis)
+        val days = TimeUnit.MILLISECONDS.toDays(diffMillis)
 
         return "$days days until $solsticeName"
     }
